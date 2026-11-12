@@ -22,6 +22,7 @@ vNNN-<label>/
 | 版本 | 日期 | 状态 | 改动说明 | 对应规范 |
 | --- | --- | --- | --- | --- |
 | `v000-baseline` | 2026-11-12 | baseline，未提交 | [README](v000-baseline/README.md) | [baseline-compatibility](../spec/baseline-compatibility.md) |
+| `v001-first-python-submission` | 2026-11-12 | 已提交；admission passed；version 1 | [README](v001-first-python-submission/README.md) | [agx-submit skill](../../.claude/skills/agx-submit/SKILL.md), [baseline-compatibility](../spec/baseline-compatibility.md) |
 
 ## 新版本流程
 

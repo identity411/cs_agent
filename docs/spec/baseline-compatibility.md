@@ -2,7 +2,7 @@
 
 > 对照对象：本仓库 `agent.py`（177 行 baseline，commit `57fb246`）与官方指南合同 `rsi-fps-5.5`。这是**静态审阅**，没有在真实首拍或本地 Arena 上验证；实际字段与语义以首次合法观察、裁判回执和官方源码为准。
 >
-> 版本：`v000-baseline`（[快照与改动说明](../submissions/v000-baseline/README.md)）。本文件记录该版本与官方合同的差异；后续版本在 `docs/submissions/` 中按相同流程登记。
+> 版本：`v000-baseline`（[快照与改动说明](../submissions/v000-baseline/README.md)）。`v001-first-python-submission` 是同一份代码的首次 Python ZIP 提交（[提交结果](../submissions/v001-first-python-submission/README.md)），admission `passed`、版本 1 已激活；下表的差异**仍未修复**，准入通过不代表完整对局或得分成功。
 
 ## 结论
 
@@ -12,7 +12,7 @@
 
 | 位置 | baseline 的假设 | 官方合同 | 影响 / 处理 |
 | --- | --- | --- | --- |
-| `load_map` / `route` | `map["nav"]["nodes"]`、`map["nav"]["edges"]` 一定存在，且 `walk` 边可双向通行 | 首拍描述明确包含 `sites`、`spawns`、`meshes`、`route_landmarks`、`plant_zones` 等；`source-adjacency` 只是导航来源，不证明边可通行 | 若没有 `nav` 会直接 `KeyError`。先用真实首拍确认；不要仅凭几何邻接当作可通行图 |
+| `load_map` / `route` | `map["nav"]["nodes"]`、`map["nav"]["edges"]` 一定存在，且 `walk` 边可双向通行 | 首拍描述明确包含 `sites`、`spawns`、`meshes`、`route_landmarks`、`plant_zones` 等；`source-adjacency` 只是导航来源，不证明边可通行 | v001 admission 通过说明首拍路径未崩溃，但五图 / 完整对局仍未验证。若没有 `nav` 会直接 `KeyError`；不要仅凭几何邻接当作可通行图 |
 | `combat` | 武器有 `aim_punch: {yaw, pitch}` | 合法武器字段是 `recoil_pitch` / `recoil_yaw`，没有 `aim_punch` | `.get("aim_punch", {})` 会静默返回空字典，当前等于完全不做后坐力补偿；应改用官方字段 |
 | `combat` | 只要 `reload_until` 为假值就算不在换弹 | `reload_until` 是绝对结束 tick 或 `null`；`me.reload` 是剩余秒数 | 若换弹结束后该字段仍保留过去 tick，baseline 会永远不满足 `not reload_until`，从而不再开火。应显式比较 `match_tick`，或读 `me.reload` |
 | `act` 下包 | 距站点 `center` 小于 `radius * 0.5` 就发 `use="plant"` | 裁判要求脚点在站点 / `plant_zones` 内，存活、着地、速度 ≤ 0.1 m/s、持续 `use="plant"` 180 tick | 位置判定可能不符；应使用 `plant_zones`，并确保交互期间静止 |

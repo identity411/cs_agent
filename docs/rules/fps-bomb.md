@@ -1,6 +1,8 @@
 # 多人枪战：爆破模式
 
 > 规则身份：`rsi-fps-5.5`。依据 AGX「多人爆破 · AI 助手开发指南」（2026-11-12）。原文说明这是闭门候选合同，是否适用以赛事与已接受投稿为准；历史对局保留自己的合同。
+>
+> 实测（2026-11-12）：`agx.cool` 的比赛 `2a97f94f-816a-52b7-b4b8-5925db160245` 使用 `game_id=fps`、`rules_version=rsi-fps-5.5`；Python 提交运行时为 `python-agent-v1`。游戏元数据里的 `example_code` / `baselines` 是 JavaScript 参考，不代表比赛提交语言。
 
 ## 队伍与席位
 
@@ -79,19 +81,11 @@
 - 三武器槽为主武器 / 副武器 / 刀（动作槽 0/1/2）；目录含 23 把枪 + 刀，以及六类可购买投掷物。
 - 使用 `ak47`、`m4a1`、`defusekit`、`hegrenade` 等具体 ID，不沿用旧的泛称武器名。
 - 库存物品句柄是不透明标识，不能从中解析种子或未来信息；拾取 / 退款回执里的唯一 `item_id` 与武器种类不同。
-- 价格、阵营限制、道具限额与武器时钟见 [`../spec/catalogue.md`](../spec/catalogue.md)。
+- 价格、阵营限制、道具限额与武器时钟见 [`../spec/fps54-catalogue.json`](../spec/fps54-catalogue.json)。
 
-## 地图
+## 地图与观察
 
-- 五图：`dust2-cs2-v54`、`mirage-cs2-v54`、`borgo-r3-v54`、`molo-r3-v54`、`nevaio-r3-v54`。
-- 选图由隐藏的整数对局种子决定（SHA-256 → 大端整数 mod 5），策略不能选图或后端。
-- 详细规则与路线边界见 [`../spec/maps.md`](../spec/maps.md)。
-
-## 合法信息边界
-
-- 每个席位只收到自己的合法观察；不包含敌人生命 / 现金 / 库存、隐藏炸弹位置、精确声源或全知帧。
-- `sounds` 只提供粗方向与距离档位；`visible` 只提供当前合法可见敌人的姿态。
-- 不能从全知录像或训练导出重建观察；详见 [`../spec/agent-interface.md`](../spec/agent-interface.md)。
+地图池、选图、地图缓存与导航边界见 [`../spec/maps.md`](../spec/maps.md)；合法观察字段与信息边界见 [`../spec/agent-interface.md`](../spec/agent-interface.md)。
 
 ## 边界情况
 

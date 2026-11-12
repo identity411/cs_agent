@@ -1,0 +1,36 @@
+{
+  "version": "v001-first-python-submission",
+  "date": "2026-11-12",
+  "competition_id": "2a97f94f-816a-52b7-b4b8-5925db160245",
+  "contract": "rsi-fps-5.5",
+  "status": "submitted; admission passed; activated version 1",
+  "files": {
+    "agent.py": "eb94b88e287d62ebb858cc0b29134dd1f1e39c3d5e4b8b388fb7bb15d545018e"
+  },
+  "change_note": "README.md",
+  "related_specs": [
+    "../../../.claude/skills/agx-submit/SKILL.md",
+    "../../spec/baseline-compatibility.md",
+    "../../spec/README.md"
+  ],
+  "api_result": {
+    "agent_id": "11a0f0db-afda-4a57-a2f4-36ed0462085e",
+    "bundle_id": "cfbc03a1-83de-417e-a600-230cd60c6380",
+    "version_id": "13e15473-f1ae-463b-8cd2-a0fa3498dab9",
+    "number": 1,
+    "admission": "passed",
+    "fault_code": null,
+    "runtime_id": "python-agent-v1",
+    "contract_id": "rsi-fps-5.5",
+    "rules_version": "rsi-fps-5.5",
+    "bundle_sha256": "eb06a768569c783232a1b6bbdb221f10c87f30fdb3a04561235be7174a6e5aaf",
+    "profile_digest": "2ab9f9d47a6f1a326d2c04414710fbdcd9ff2a0ff16bf0b2769a24d08cf692c4",
+    "idempotency_key": "d1981a3f-a7bf-42d6-bd5e-e478e829ddcd",
+    "uploaded_at": "2026-11-12T08:18:08.309022+00:00",
+    "registered": true,
+    "entry_id": "f81706cb-1aa5-54e6-9e4b-e1199ca25820",
+    "entry_version_number": 1,
+    "entry_code_hash_short": "eb06a768569c",
+    "note": "Python bundle history reports version number 1; activation POST returned 200; the competition entry shows version.number=1 and code_hash_short=eb06a768569c. The /api/v1/me/competitions current_version remained null at verification time."
+  }
+}

@@ -188,6 +188,6 @@ def act(observation):
 ## 相关文档
 
 - [maps.md](maps.md) — 五图、选图、坐标与 `map` 结构
-- [catalogue.md](catalogue.md) — 冻结武器 / 装备 / 投掷物
-- [limits-and-submission.md](limits-and-submission.md) — CPU、打包、本地十席与上传
+- [fps54-catalogue.json](fps54-catalogue.json) — 冻结武器 / 装备 / 投掷物
+- [agx-submit skill](../../.claude/skills/agx-submit/SKILL.md) — 预算、打包、故障语义与 Python 上传
 - [baseline-compatibility.md](baseline-compatibility.md) — 当前 `agent.py` 的差异
