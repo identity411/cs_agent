@@ -1,0 +1,38 @@
+{
+  "version": "1112-v0.02",
+  "date": "2026-11-12",
+  "competition_id": "2a97f94f-816a-52b7-b4b8-5925db160245",
+  "contract": "rsi-fps-5.5",
+  "status": "submitted; admission passed; activated version 2",
+  "files": {
+    "agent.py": "f32f3aec233fc6b47cdc657cd72447daac76b1720833f6ededc86dfbcce65db3"
+  },
+  "change_note": "README.md",
+  "related_specs": [
+    "../../spec/11-12-stuck-at-spawn.md",
+    "../../spec/11-12-empty-primary-switch-reload.md",
+    "../../spec/README.md",
+    "../../../.claude/skills/agx-submit/SKILL.md",
+    "../../../.claude/skills/agx-match-query/SKILL.md"
+  ],
+  "api_result": {
+    "agent_id": "11a0f0db-afda-4a57-a2f4-36ed0462085e",
+    "bundle_id": "e0cbafab-cb9a-4cb2-acf6-866a8de95ba7",
+    "version_id": "5a0da38e-f845-4323-b80d-a51560e51e24",
+    "number": 2,
+    "admission": "passed",
+    "fault_code": null,
+    "runtime_id": "python-agent-v1",
+    "contract_id": "rsi-fps-5.5",
+    "rules_version": "rsi-fps-5.5",
+    "bundle_sha256": "033716bdfb0ccdbf859314ec47ffde597623d615478ef9da0df923c039a58ea2",
+    "code_sha256": "f32f3aec233fc6b47cdc657cd72447daac76b1720833f6ededc86dfbcce65db3",
+    "profile_digest": "2ab9f9d47a6f1a326d2c04414710fbdcd9ff2a0ff16bf0b2769a24d08cf692c4",
+    "idempotency_key": "d146966d-1849-47e1-ab29-f69cf72370ff",
+    "uploaded_at": "2026-11-12T11:24:22.634523+00:00",
+    "entry_id": "f81706cb-1aa5-54e6-9e4b-e1199ca25820",
+    "entry_version_number": 2,
+    "entry_code_hash_short": "033716bdfb0c",
+    "note": "Version 2 activated; entries confirms version.number=2 and code_hash_short=033716bdfb0c. The next scheduled round is 12:00-14:00 UTC."
+  }
+}
