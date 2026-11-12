@@ -56,13 +56,16 @@ python3 .claude/skills/agx-match-query/scripts/agx_matches.py round \
 
 # Most recent match: round state, result, my entry/version, replay link,
 # map, public-event seat stats, zero-shot rounds, reload/draw events.
+# The human output prints my_seat_label:
+#   seat 7 (0-based) = team 1 = 第 8 个玩家
 python3 .claude/skills/agx-match-query/scripts/agx_matches.py report
 
 # Same, for a specific match and seat.
 python3 .claude/skills/agx-match-query/scripts/agx_matches.py report \
   --match-id da110811-9f35-4c86-9492-b322b1302391 --seat 7
 
-# List FPS matches; mine are marked by my_seat.
+# List FPS matches; mine carry my_seat, my_seat_position, my_team, and
+# my_seat_label (e.g. "seat 7 (0-based) = team 1 = 第 8 个玩家").
 python3 .claude/skills/agx-match-query/scripts/agx_matches.py matches
 
 # Public event stream + seat stats (writes JSONL with --out).
@@ -96,6 +99,7 @@ python3 .claude/skills/agx-match-query/scripts/agx_matches.py collect \
 # RSI_ACCOUNT_<NAME>_COMPETITION_ID; --game-id overrides it.
 
 # Aggregate observability metrics for collected matches (read-only).
+# Prints a "seat mapping" block: seat N (0-based) = team T = 第 N+1 个玩家.
 # Requires `collect --replays` first.  Movement metrics sample public frames
 # at 2 s; use --no-frames for event-only combat/accuracy metrics.
 python3 .claude/skills/agx-match-query/scripts/agx_observe.py \
@@ -144,6 +148,9 @@ recorded. Full public frames are still fetched on demand with `frames`.
   authenticated account. There is no cross-account flag: `collect` and
   `accounts --check` issue requests separately for each account key and never
   copy one account's `is_mine` data to another.
+- Seats are **0-based** in participants, observations, and `--seat`; the web
+  viewer's "第 N 个玩家" is `seat + 1`.  All match outputs now include
+  `seat_label`, `*_seat_position`, and the participant team.
 - `GET /api/v1/python-submissions/competitions/{id}/registration` returns
   `{registered, agent_id}` and is safe for read-only checks.
 - `GET /api/v1/matches?game_id=fps&limit=100&offset=0` works and returns
@@ -197,6 +204,20 @@ is one JSON object with the map (`sites`, `nav`, `spawns`, `plant_zones`,
 
 ## Output rules
 
+- **Always state the seat in both conventions when reporting a match.**
+  The API and agent observations use a **0-based** seat; the web viewer
+  shows the **1-based** position among the ten players (= seat + 1).
+  `matches`, `report`, `events`, `frames`, and `collect --replays` expose
+  `seat_label` for exactly this:
+
+  ```text
+  seat 7 (0-based) = team 1 = 第 8 个玩家
+  ```
+
+  Examples: main seat 6 → team 1 → 第 7 个玩家；account2 seat 7 → team 1 →
+  第 8 个玩家.  Never report only the 1-based position or omit the team;
+  quote the 0-based seat as well, because that is the number the user
+  reports.
 - Report only what the API / public replay confirms. Upload/admission
   success is not a match result; a replay frame is not a private decision.
 - Distinguish `is_mine` and seat from the match participant; never assume

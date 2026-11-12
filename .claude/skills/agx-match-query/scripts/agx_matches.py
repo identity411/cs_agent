@@ -204,6 +204,29 @@ def mine_participant(match):
     return None
 
 
+def participant_team(match, seat):
+    """Team for a 0-based seat in this match, or None when unknown."""
+    if seat is None:
+        return None
+    for participant in match.get("participants", []):
+        if participant.get("seat") == seat:
+            return participant.get("team")
+    return None
+
+
+def seat_label(match, seat):
+    """State the user's 0-based seat and the 1-based ten-player position.
+
+    Seats in the API and in agent observations are 0-based.  The web viewer
+    shows the 1-based "第几个玩家", which is seat + 1, so always report both.
+    """
+    if seat is None:
+        return None
+    team = participant_team(match, seat)
+    team_text = f"team {team}" if team is not None else "team unknown"
+    return f"seat {seat} (0-based) = {team_text} = 第 {seat + 1} 个玩家"
+
+
 def find_match(client, competition_id: str, match_id: str | None,
                game_id: str):
     me = my_competition(client, competition_id)
@@ -521,13 +544,17 @@ def cmd_matches(args) -> int:
                if m.get("competition_id") == competition_id]
     for match in matches:
         mine = mine_participant(match)
+        seat = mine.get("seat") if mine else None
         print(json.dumps({
             "id": match.get("id"),
             "finished_at": match.get("finished_at"),
             "status": match.get("status"),
             "replay_state": match.get("replay_state"),
             "result": match.get("result"),
-            "my_seat": mine.get("seat") if mine else None,
+            "my_seat": seat,
+            "my_seat_position": seat + 1 if seat is not None else None,
+            "my_team": participant_team(match, seat),
+            "my_seat_label": seat_label(match, seat),
             "replay": replay_link(client, match["id"]),
         }, ensure_ascii=False))
     return 0
@@ -565,6 +592,9 @@ def cmd_report(args) -> int:
             "finished_at": match.get("finished_at"),
             "result": match.get("result"),
             "my_seat": seat,
+            "my_seat_position": seat + 1,
+            "my_team": participant_team(match, seat),
+            "my_seat_label": seat_label(match, seat),
             "participants": match.get("participants"),
             "replay": replay_link(client, match_id),
         },
@@ -587,6 +617,8 @@ def cmd_report(args) -> int:
         report["map_id"] = static.get("map", {}).get("id")
         report["events"] = {
             "count": len(events),
+            "seat": seat,
+            "seat_label": seat_label(match, seat),
             "stats": event_stats(events, seat),
         }
     except QueryError as exc:
@@ -605,6 +637,7 @@ def cmd_report(args) -> int:
             "my_leaderboard": report["my_leaderboard"],
         }, ensure_ascii=False, indent=2))
         print("\n=== match ===")
+        print(f"seat: {report['match']['my_seat_label']}")
         print(json.dumps(report["match"], ensure_ascii=False, indent=2))
         if "map_id" in report:
             print(f"\nmap: {report['map_id']}")
@@ -651,8 +684,14 @@ def cmd_events(args) -> int:
                 handle.write(json.dumps(event, ensure_ascii=False) + "\n")
         print(f"wrote {len(events)} events to {args.out}", file=sys.stderr)
     if args.json:
-        print(json.dumps(stats, ensure_ascii=False, indent=2))
+        print(json.dumps({
+            **stats,
+            "seat_position": seat + 1,
+            "team": participant_team(match, seat),
+            "seat_label": seat_label(match, seat),
+        }, ensure_ascii=False, indent=2))
     else:
+        print(f"seat: {seat_label(match, seat)}")
         print_event_stats(stats)
     return 0
 
@@ -688,6 +727,9 @@ def cmd_frames(args) -> int:
     summary = {
         "match_id": match["id"],
         "seat": seat,
+        "seat_position": seat + 1,
+        "team": participant_team(match, seat),
+        "seat_label": seat_label(match, seat),
         "round": args.round,
         "ticks": [start_tick, end_tick],
         "frame_count": len(frames),
@@ -796,6 +838,7 @@ def competition_matches(client, competition_id: str, game_id: str,
 
 def compact_match(client, match: dict) -> dict:
     mine = mine_participant(match)
+    seat = mine.get("seat") if mine else None
     return {
         "id": match.get("id"),
         "status": match.get("status"),
@@ -803,7 +846,10 @@ def compact_match(client, match: dict) -> dict:
         "finished_at": match.get("finished_at"),
         "result": match.get("result"),
         "replay_state": match.get("replay_state"),
-        "my_seat": mine.get("seat") if mine else None,
+        "my_seat": seat,
+        "my_seat_position": seat + 1 if seat is not None else None,
+        "my_team": participant_team(match, seat),
+        "my_seat_label": seat_label(match, seat),
         "replay": replay_link(client, match["id"]) if match.get("id") else None,
     }
 
@@ -834,6 +880,10 @@ def collect_replays(client, account, matches: list[dict], seat: int | None,
         item = {
             "match_id": match_id,
             "seat": my_seat,
+            "seat_position": (my_seat + 1
+                              if my_seat is not None else None),
+            "team": participant_team(match, my_seat),
+            "seat_label": seat_label(match, my_seat),
             "files": {},
         }
         try:

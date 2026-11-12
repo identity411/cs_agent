@@ -443,12 +443,16 @@ def analyze_match(account: str, match_id: str, label: str,
                 and row["rotation"]["opportunity"]
                 and row["rotation"]["arrive"]),
         }
+    seat_label = meta.get("my_seat_label") or (
+        f"seat {seat} (0-based) = team {team} = 第 {seat + 1} 个玩家")
     return {
         "label": label,
         "account": account,
         "match_id": match_id,
         "map": map_data["id"],
         "seat": seat,
+        "seat_position": seat + 1,
+        "seat_label": seat_label,
         "team": team,
         "rounds": len(rows),
         "rounds_with_frames": sum(1 for row in rows
@@ -644,6 +648,9 @@ def print_summary(matches: list[dict], aggregates: dict) -> None:
               f"{fmt_percent(rate(len(match['reached_site_rounds']), match['rounds_with_frames']))} "
               f"{fmt_percent(rate(len(match['true_stuck_rounds']), match['rounds_with_frames']))} "
               f"{len(match['rotation_attempts'])}/{len(match['rotation_opportunities'])}")
+    print("\nseat mapping:")
+    for match in matches:
+        print(f"  {match['label']}: {match['seat_label']}")
     print("\nversion aggregate:")
     for label, values in aggregates.items():
         print(f"  {label:<16} matches={values['matches']} rounds={values['rounds']} "
