@@ -70,6 +70,8 @@ def simulate(module, map_row: dict, site_id: str, round_index: int,
     yaw, tick = 0.0, 400
     obs = observation(pos[0], pos[1], yaw, round_index=round_index,
                       tick=tick, match_map=map_row, seat=seat, z=pos[2])
+    obs["map_id"] = map_row["id"]
+    obs["static_schema_hash"] = map_row.get("geometry_hash")
     obs["side"] = side
     obs["team"] = 0
     obs["attack_team"] = 0 if side == "attack" else 1
@@ -139,10 +141,12 @@ def simulate(module, map_row: dict, site_id: str, round_index: int,
         "steps": steps,
         "seconds": round(steps * 0.05, 1),
         "position": [round(pos[0], 1), round(pos[1], 1)],
-        "goal": [round(value, 1) for value in player.goal],
+        "goal": ([round(value, 1) for value in player.goal]
+                 if player.goal is not None else None),
         "route": getattr(player, "attack_route_name", None),
         "blocked_nodes": len(getattr(player, "blocked", ())),
         "penalized_edges": len(getattr(player, "edge_penalty", {})),
+        "replay_cursor": getattr(player, "replay_cursor", 0),
     }
 
 

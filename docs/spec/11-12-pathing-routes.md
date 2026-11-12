@@ -1,8 +1,8 @@
 # 规范：A* 寻路、地图进攻路线与移动/战斗控制
 
-Status: **2026-11-12 已随 `1112-v0.03` 提交/激活；当前工作区另有 post-v0.03 修正（T 方 pre-plant patrol 振荡、dust2 旧卡点 soft hazard、本地 nav 模拟器），待 v0.04/新对局验证。本地 `tests.test_movement` 12/12、全量 unittest 47/47 通过**
+Status: **2026-11-13 Dust2 用户轨迹跟随已随 `1113-v0.06` 提交到 account2 version 5 并激活；原有 `1112-v0.04` 仍为 main version 4。全量 unittest 59/59 通过；正式对局效果待验证。**
 Date: 2026-11-12
-Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照）· [11-12-match-observability.md](./11-12-match-observability.md)（卡死/到点/回防指标）· [11-12-stuck-at-spawn.md](./11-12-stuck-at-spawn.md)（出生点卡住）· [11-12-site-center-hold.md](./11-12-site-center-hold.md)（包点中心 hold）· [maps.md](./maps.md)（nav / bot_waypoints 边界）· [agent-interface.md](./agent-interface.md)（动作字段）
+Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照）· [1113-v0.05](../submissions/1113-v0.05/README.md)（Dust2 用户轨迹跟随）· [1113-v0.06](../submissions/1113-v0.06/README.md)（原地准星帧修正）· [11-12-advance-holds.md](./11-12-advance-holds.md)（下游：寻路之后的推进点 / 预瞄角 / 刹停）· [11-12-mirage-spawn-jump.md](./11-12-mirage-spawn-jump.md)（Mirage R6/R10 与 CT A 卡台阶）· [11-12-match-observability.md](./11-12-match-observability.md)（卡死/到点/回防指标）· [11-12-stuck-at-spawn.md](./11-12-stuck-at-spawn.md)（出生点卡住）· [11-12-site-center-hold.md](./11-12-site-center-hold.md)（包点中心 hold）· [maps.md](./maps.md)（nav / bot_waypoints 边界）· [agent-interface.md](./agent-interface.md)（动作字段）
 
 ## 0. 目标
 
@@ -81,20 +81,30 @@ Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照�
 
 没有 `attackRoutes` 的地图（nevaio/borgo）回退到 A* 直达 site center；不硬编码地图路线。
 
-### 2.5 dust2 旧卡点 soft hazard
+### 2.5 旧卡点 soft hazard 与 `map_patches.py`
 
-`MAP_HAZARDS` 以 v0.02 公开帧里两个持续卡住的位置为种子：
+所有地图坐标和阈值都不再写在 `agent.py`。根目录 `map_patches.py` 的 `MapPatch` 是 agent 读取的抽象修补层：
 
-- T 侧 `(83.4, 88.2)`：R13 起卡住；
-- dust2 CT 侧 A 点入口 `(160.63, 125.71)`：R7 在 `(160.63,125.71)` 与 `(158.9,119.2)` 之间反复上下坡，持续到回合结束；
-- Mirage CT 侧 A 点入口 `(42.8, 66.4)`：2026-11-12 14:00 UTC v0.03 对局 seat 3 在 R13/15/17/19/21 停在 `(42.8,66.4,14.3)` 附近，速度约 0.01，A 点中心在 `(44.67,88.18)`，始终没上去。
+```python
+patch = map_patches.for_map(map_id)   # 未知地图返回中性 EMPTY
+patch.hazards                         # ((x, y, radius), ...)
+patch.step_jump_height                # 台阶跳高度
+patch.step_jump_radius                # 台阶跳水平距离
+```
+
+当前种子：
+
+- dust2 T 侧 `(83.4, 88.2)`：v0.02 R13 起卡住；
+- dust2 CT A 点入口 `(160.63, 125.71)`：R7 在 `(160.63,125.71)` 与 `(158.9,119.2)` 之间反复上下坡；
+- Mirage CT A 入口 `(42.8, 66.4)`：v0.03 对局 seat 3 在 R13/15/17/19/21 停在 `(42.8,66.4,14.3)` 附近，速度约 0.01，A 点中心在 `(44.67,88.18)`，始终没上去。
 
 规则：
 
-- 半径 3.0 内的 nav 节点，其所有入射/出射边初始惩罚 = `EDGE_PENALTY_MAX`；
+- 半径内的 nav 节点，其所有入射/出射边初始惩罚 = `EDGE_PENALTY_MAX`；
 - 这是 **soft penalty**，不是硬禁行；没有替代路径时 A* 仍可走；
 - 目的是让 `A_split` 这类原本经过 244/307 附近的分支优先绕开；`A_long` 本来就不经过该点；
-- 如果后续碰撞级验证证明该点可走，应降低/删除这个种子，避免过度绕路。
+- 如果后续碰撞级验证证明该点可走，应降低/删除这个种子，避免过度绕路；
+- 新增地图修补只改 `map_patches.py`，不改 `agent.py` 的地图分支。
 
 ### 2.6 本地 nav 模拟
 
@@ -117,6 +127,20 @@ Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照�
   - `stuck > 80` 或 `wp_ticks > 60`：当前点加入 blocked、边加惩罚、跳过并重路由；
 - 最终 goal 在脚下（<0.6 m）时保持位置，不再对零向量原地转。
 
+### 3.1 前进跳 / 台阶跳
+
+旧 `stuck` 只检查“位置有没有变”。碰撞滑动会让位置每拍都变，但 agent 在原地/墙边左右摩擦，`stuck` 永远不累计，跳跃恢复不触发；Mirage R6 的带包 seat 2 就是这样滑了 100+ 秒。
+
+现在：
+
+- 用 `wp_progress += last_d - d` 累计净进度；达到 `WAYPOINT_PROGRESS=0.4` 才清零。左右摩擦净进度≈0，仍会累计 `wp_ticks`；
+- `wp_ticks >= JUMP_AFTER_TICKS=12`（约 0.6 s）、朝向对齐、`grounded`、冷却（`JUMP_COOLDOWN_TICKS=24` match tick）结束时，**向前跳**并保持 `move_forward>0`；
+- 每个 waypoint 最多 `JUMP_ATTEMPTS=3` 次前进跳；之后才跳过该点并加边惩罚；
+- 下一个 waypoint 比脚底高 ≥ `map_patch.step_jump_height`（默认 0.8 m）、水平 ≤ `map_patch.step_jump_radius`（默认 2.5 m）时，直接台阶跳；
+- `stuck > STUCK_AFTER` 时先尝试朝 waypoint 前进跳，跳不了才退回后退 + 横移。
+
+Mirage 证据与两个已知台阶见 [11-12-mirage-spawn-jump.md](./11-12-mirage-spawn-jump.md)。
+
 ## 4. 战斗层
 
 - 有可见敌人时进入 combat，但不再无条件站桩：
@@ -138,6 +162,17 @@ Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照�
   - 已下包：goal = 炸弹位置；无可见敌人或引信 <10 s 时 `use="defuse"`，否则先交战；
   - 回防仍受 sprint 速度影响，下一轮用 `agx_observe.py` 验证到位率。
 
+### 5.1 临时 T 兜底：40 s 未下包 → CT spawn
+
+**这是临时逻辑，不是长期战术。** 比赛初期各家的 nav 数据/碰撞都不稳定，agent 容易卡在自家出生点；为了避免整回合卡死，T 方在 `round_tick >= 2400`（40 s，60 Hz，包含 freeze time）仍未下包时，直接改目标为 CT 出生点：
+
+- 条件：`side == "attack"`、`bomb.state != "planted"`、`round_tick >= TEMP_T_CT_FALLBACK_TICKS`、地图有 CT spawn；
+- 带包/不带包都执行，且跳过 attack lane 与 plant 判定；
+- 一旦炸弹下包，立即恢复正常的 T post-plant watch；
+- CT 方、已下包回合不受影响；
+- 代码常量 `TEMP_T_CT_FALLBACK_TICKS` 和注释都标了 `TEMPORARY`，后续 nav 边验证完成、卡死率下降后应删除；
+- 地图没有 `spawns` / `spawn_pads_by_side` 时自动禁用。
+
 ## 6. 代码位置
 
 | 逻辑 | 位置 |
@@ -148,7 +183,9 @@ Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照�
 | 选包点 | `agent.py` `choose_site()` |
 | plant 区 | `agent.py` `plant_point()` / `in_plant_zone()` |
 | patrol | `agent.py` `patrol_points()` / `watch_point()` |
-| sprint / stuck | `agent.py` `move()` |
+| sprint / stuck / 前进跳 / 台阶跳 | `agent.py` `move()` |
+| 地图修补（hazard / 台阶阈值） | `map_patches.py` `MapPatch` / `for_map()` |
+| 临时 T 40 s → CT spawn 兜底 | `agent.py` `TEMP_T_CT_FALLBACK_TICKS` / `act()` / `_first_spawn()` |
 | combat strafe / 超时 | `agent.py` `combat()` / `act()` |
 
 ## 7. 验证
@@ -161,11 +198,11 @@ python3 -m unittest discover -s tests -v
 
 当前本地结果：
 
-- `tests.test_movement` 12/12 通过；
+- `tests.test_movement` 18/18 通过（含前进跳 / 台阶跳 / `map_patches` 接线 / 临时 T 兜底）；
 - 真实 dust2 static：T 方 seat 0–4 会分散到 `A_long/A_split`、`B_long/B_split`；拿包的人走最快 lane；
 - dust2 T→A 路径约 166 units、T→B 约 152 units（无合成反向边）；
 - nevaio/borgo 无 `attackRoutes`，A* 直达 site；路径约 58–124 units。
-- 全量 unittest 47/47（12 movement + 28 account/batch + 7 dust2 regression）。
+- 全量 unittest 53/53（18 movement + 28 account/batch + 7 dust2 regression）。
 
 ### 7.1 本地可重复 nav 模拟
 
@@ -208,17 +245,19 @@ python3 scripts/simulate_nav.py --side defend --site B --round 2 \
 - dust2 CT A 点入口：v0.02 R7 公开帧显示 agent 在 `(160.63,125.71,20.71)` 与约 `(158.9,119.2,18.8)` 之间每 2–4 s 来回一趟，持续到回合结束；这是 CT 侧的第二个卡死形态（上坡/台阶碰撞，不是 B 中心 hold）。
 - 当前 A* 的 CT→A 路径离该旧点最近约 **5.03 m**（v0.02 旧 BFS 路径约 3.44 m），并对该点种了 soft hazard；能否真正避开台阶仍取决于碰撞世界。
 - nevaio CT R7–R10：current nav 模拟 26.2 s 到点；v0.01/v0.02 nav 模拟约 51 s。**真实碰撞未知**，不能据此判断 nevaio 旧 CT 出生点卡死是否修复。
-- Mirage CT A 点（2026-11-12 14:00 v0.03 对局 `d24bd037…`，main seat 3）：R13/15/17/19/21 公开帧停在 `(42.8,66.4,14.3)`，A 点 `(44.67,88.18)` 约 22 units 外；v0.03 A* 路径离该旧点最近约 **3.92 m**。当前工作区加了 Mirage soft hazard 后路径最近约 **14.69 m**，nav 模拟 CT→A 22.2 s reached；真实台阶碰撞仍待验证。
-- 2026-11-12 14:00–16:00 UTC 的 v0.03 正式对局（job `d24bd037…`）仍在运行；运行中的 public recording 返回 404，需要结束后才能拉帧。
+- Mirage CT A 点（2026-11-12 14:00 v0.03 对局 `d24bd037…`，main seat 3）：R13/15/17/19/21 公开帧停在 `(42.8,66.4,14.3)`，A 点 `(44.67,88.18)` 约 22 units 外；v0.03 A* 路径离该旧点最近约 **3.92 m**。当前工作区加了 Mirage soft hazard 后路径最近约 **14.69 m**，nav 模拟 CT→A 22.4 s reached；真实台阶碰撞仍待验证。
+- 2026-11-12 14:00 UTC 的 v0.03 Mirage 对局（`d24bd037…`）已结束。R6 带包人是 seat 2，整队卡在 T 出生点、0 次开火；R10 带包人 seat 1 在同一拐角跳出来后下包 A。R13 的 CT seat 3 在 A ramp 与东侧 `(74.6,62.3)` 两次卡台阶。详见 [11-12-mirage-spawn-jump.md](./11-12-mirage-spawn-jump.md)。
+- 已下载 `/assets/fps-v54-cs2/mirage/reconstruction.json`（2.7 MB，73,152 个三角形分类 / 1,717 个 source volume）；`mirage-positions.f32`、`mirage-materials.u8`、`mirage-walked-nav.json` 在公开 API 上均为 404。
 
-- **这不是碰撞级证明**：`static.json` 的 `collision.positions` 只有 `dust2-positions.f32` 的路径/SHA/三角形数（239,733）和 basis/offset，**没有 f32 数据本身**；本地无法复现真实高度场/台阶/箱子碰撞。nav 模拟只能证明路径连通、目标切换和软 hazard 恢复，不能保证正式对局不卡。
+- **这不是碰撞级证明**：`static.json` 的 `collision.positions` 只有网格文件路径/SHA/三角形数和 basis/offset，**没有 f32 数据本身**；本地无法复现真实高度场/台阶/箱子碰撞。nav 模拟只能证明路径连通、目标切换和软 hazard 恢复，不能保证正式对局不卡。
 
 ## 8. 待验证 / 已知限制
 
-- `v0.03` 已提交/激活；当前工作区的 T 方 pre-plant patrol 关闭、dust2 soft hazard、`scripts/simulate_nav.py` 尚未进入 v0.03 快照，需要 v0.04 或下一轮前重新提交。
+- `v0.03` 已提交/激活；`v0.04` 已把 T 方 pre-plant patrol 关闭、dust2/Mirage soft hazard、前进跳 / 台阶跳、`map_patches.py` 提交/激活（`scripts/simulate_nav.py` 仅本地，不随 ZIP）。
 - 尚未跑新对局；所有效果需用下一场正式对局和 `agx_observe.py` 回填。
 - 没有可用的碰撞网格文件；static 只有引用。nav 边仍可能不可走，边代价只能事后学习。
-- dust2 的 `MAP_HAZARDS` 是从 v0.02 公开帧的单次卡死位置 `(83.4, 88.2)` 种下的 soft penalty；如果碰撞验证显示该点其实可走，应降低/删除，避免过度绕路。
+- `map_patches.py` 里的 hazard 是从公开帧单次卡死位置种下的 soft penalty；如果碰撞验证显示该点其实可走，应降低/删除，避免过度绕路。
+- 临时 T 兜底（40 s 未下包 → CT spawn）是为了绕开早期 nav/碰撞卡死，不是正常战术；它会让带包人放弃可下的包，nav 卡死率下降后应删除 `TEMP_T_CT_FALLBACK_TICKS` 分支。
 - `source-adjacency` 反向边默认关闭；若后续实测可走，再逐图开启。
 - `plant_point` 目前优先选 zone 内离 site center 最近的 nav 节点；若该点被挡，仍可能走不到。
 - CT 还没有 dust2 `ctRoleLane`/`ctRoles` 的进攻性分路；本轮先解决 T 方“出去/到点/下包”。
@@ -233,6 +272,9 @@ python3 scripts/simulate_nav.py --side defend --site B --round 2 \
 - [x] plant_zones 下包测试。
 - [x] combat strafe + 超时恢复测试。
 - [x] 真实 dust2/nevaio/borgo static 路径冒烟测试。
+- [x] 前进跳 / 台阶跳 / `map_patches` 接线测试。
+- [x] 临时 T 兜底：40 s 未下包去 CT spawn；下包后/CT 方不触发。
 - [ ] 新对局：dust2 T 侧 R13/R14/R15/R17/R19 不再“未到点且离出生点 <20 units”。
 - [ ] 新对局：T 方有开火/交战回合比例不低于 v0.02；到点时间中位数 <40 s。
 - [ ] 新对局：拿包回合能进 plant zone 下包；下包后不再停在炸弹 8 m 内慢转。
+- [ ] 新对局：Mirage T 出生点西侧 / CT A 台阶不再整回合卡住（见 `11-12-mirage-spawn-jump.md`）。

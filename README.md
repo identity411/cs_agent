@@ -74,6 +74,7 @@ python3 .claude/skills/agx-submit/scripts/agx_submit.py submit --account account
 | 路径 | 说明 |
 | --- | --- |
 | `agent.py` | baseline：地图寻路、购买、瞄准射击、下包 / 拆包 |
+| `map_patches.py` | 地图修补抽象层：soft hazard、台阶跳阈值；agent 只调用 `for_map()` |
 | `scripts/` | 本地复现 / nav 模拟脚本（R2 包点 hold、`simulate_nav.py`） |
 | `tests/` | 本地回归测试（A* / 攻击路线 / 移动 / 路径点 / 卡住恢复 / 战斗超时） |
 | `docs/` | 规范、规则、badcase 与提交版本快照 |
@@ -84,14 +85,14 @@ python3 .claude/skills/agx-submit/scripts/agx_submit.py submit --account account
 
 ## baseline
 
-规则型 baseline：地图 A* 寻路、dust2 进攻路线（A 大 / A 小 / B 洞 / B 门）、sprint / 战斗超时、购买、几何瞄准、下包 / 拆包与卡住恢复。接口字段与官方合同见 [`docs/spec/agent-interface.md`](docs/spec/agent-interface.md)，已知差异见 [`docs/spec/baseline-compatibility.md`](docs/spec/baseline-compatibility.md)，寻路与路线见 [`docs/spec/11-12-pathing-routes.md`](docs/spec/11-12-pathing-routes.md)。
+规则型 baseline：地图 A* 寻路、dust2 进攻路线（A 大 / A 小 / B 洞 / B 门）、sprint / 战斗超时、前进跳 / 台阶跳、购买、几何瞄准、下包 / 拆包与卡住恢复。地图相关的 hazard / 台阶阈值在 `map_patches.py` 的 `MapPatch` 里，`agent.py` 通过 `map_patches.for_map(map_id)` 读取抽象结果。接口字段与官方合同见 [`docs/spec/agent-interface.md`](docs/spec/agent-interface.md)，已知差异见 [`docs/spec/baseline-compatibility.md`](docs/spec/baseline-compatibility.md)，寻路与路线见 [`docs/spec/11-12-pathing-routes.md`](docs/spec/11-12-pathing-routes.md)。
 
 ## 说明
 
-- `agent.py` 保留原 baseline 的结构与缩进；2026-11-12 针对正式对局里的出生点卡住问题修改了路径点选择、卡住恢复与转向逻辑，详见 [`docs/spec/11-12-stuck-at-spawn.md`](docs/spec/11-12-stuck-at-spawn.md)。当前版本又把 BFS 改为 A*，并加入 dust2 attackRoutes、R2 包点 patrol、sprint、战斗超时与 plant zone，见 [`docs/spec/11-12-pathing-routes.md`](docs/spec/11-12-pathing-routes.md)；已作为 v0.03 提交/激活，尚未用新对局验证。
-- 当前工作区在 v0.03 之上还有 **post-v0.03 本地模拟修正**：T 方 pre-plant patrol 振荡、dust2/Mirage 旧卡点 soft hazard、`scripts/simulate_nav.py`；尚未提交为 v0.04，需新对局验证。
+- `agent.py` 保留原 baseline 的结构与缩进；2026-11-12 针对正式对局里的出生点卡住问题修改了路径点选择、卡住恢复与转向逻辑，详见 [`docs/spec/11-12-stuck-at-spawn.md`](docs/spec/11-12-stuck-at-spawn.md)。当前版本又把 BFS 改为 A*，并加入 dust2 attackRoutes、R2 包点 patrol、sprint、战斗超时、plant zone 与前进跳 / 台阶跳，见 [`docs/spec/11-12-pathing-routes.md`](docs/spec/11-12-pathing-routes.md)；已随 v0.03/v0.04 提交/激活，尚未用新对局验证。
+- v0.04 在 v0.03 之上加入 **post-v0.03 修正**：T 方 pre-plant patrol 振荡、dust2/Mirage 旧卡点 soft hazard（移到 `map_patches.py`）、前进跳 / 台阶跳、**临时 T 兜底（`round_tick>=40 s` 仍未下包就直接去 CT 出生点）**；已提交/激活，仍需新对局验证（`scripts/simulate_nav.py` 仅本地）。Mirage R6/R10 与 CT A 台阶证据见 [`docs/spec/11-12-mirage-spawn-jump.md`](docs/spec/11-12-mirage-spawn-jump.md)。
 - 2026-11-12 14:00 UTC v0.03 对局（Mirage，`d24bd037…`）：main seat 3（team 0，13–9 胜），account2 seat 9（team 1，9–13 负）；main CT 侧 R13/15/17/19/21 在 `(42.8,66.4)` 附近卡住，当前工作区已加 Mirage soft hazard，nav 模拟可绕开。
-- 除按轮次选点外没有随机性，适合作为对照基线；移动回归见 `python3 -m unittest discover -s tests -v`。
+- Dust2 T 方已接入用户录制的 2002 帧轨迹闭环跟随：按实时位置与准星纠偏，原地预瞄逐拍推进，可见敌人时停下交火，偏离路线时使用 A* 接回；仅在 Dust2 静态哈希匹配时启用。详见 [`1113-v0.06`](docs/submissions/1113-v0.06/README.md)；当前全量测试 59/59 通过，正式对局效果仍待验证。
 
 ## 文档
 
@@ -104,7 +105,8 @@ python3 .claude/skills/agx-submit/scripts/agx_submit.py submit --account account
 - [`docs/spec/11-12-empty-primary-switch-reload.md`](docs/spec/11-12-empty-primary-switch-reload.md)：空弹主武器切枪 / 换弹 badcase
 - [`docs/spec/11-12-stuck-at-spawn.md`](docs/spec/11-12-stuck-at-spawn.md)：出生点卡住 / 整回合不交战 badcase
 - [`docs/spec/11-12-site-center-hold.md`](docs/spec/11-12-site-center-hold.md)：到达包点后停在中心不动（R2）badcase
-- [`docs/spec/11-12-pathing-routes.md`](docs/spec/11-12-pathing-routes.md)：A* 寻路、dust2 进攻路线、sprint / 战斗超时 / plant zone
+- [`docs/spec/11-12-pathing-routes.md`](docs/spec/11-12-pathing-routes.md)：A* 寻路、dust2 进攻路线、sprint / 战斗超时 / plant zone、前进跳 / 台阶跳、临时 T 40 s 未下包 → CT spawn 兜底
+- [`docs/spec/11-12-mirage-spawn-jump.md`](docs/spec/11-12-mirage-spawn-jump.md)：Mirage R6/R10 出生点滑动卡住、CT A 台阶与前进跳修复
 - [`docs/spec/11-12-economy-rotation-combat.md`](docs/spec/11-12-economy-rotation-combat.md)：v0.01 对局的 5 类非卡住 badcase（经济 / 转点 / 走路 / 蹲射 / 换弹）
 - [`docs/spec/11-12-match-observability.md`](docs/spec/11-12-match-observability.md)：对局可观测性指标（参战 / 命中 / 卡死 / 回防）与版本对比判定
 
@@ -114,6 +116,8 @@ python3 .claude/skills/agx-submit/scripts/agx_submit.py submit --account account
 - 2026-11-12：首场正式对局结束（`nevaio-r3-v54`，team 1 11–13 负）；公开回放发现出生点卡住导致 14/24 回合 0 发射。修复版已作为 [`1112-v0.02`](docs/submissions/1112-v0.02/README.md) 提交，admission `passed`，version `2` 已激活。
 - 2026-11-12 12:00 UTC：v0.02 两场结束（main `dust2` 13–8、account2 `borgo` 13–6）。可观测性回填见 [`docs/spec/11-12-match-observability.md`](docs/spec/11-12-match-observability.md)：卡死/到点明显改善，交火参与未改善，回防启动改善但到位仍为 0；main 场公开事件为全场 0 交火异常 lobby，不用于交火结论。
 - 2026-11-12 13:41 UTC：`1112-v0.03`（A* / dust2 attackRoutes / R2 包点 patrol / 战斗控制）提交到 `main` 和 `account2`；admission 均为 `passed`，`main` version `3`、`account2` version `2` 已激活。详见 [`docs/submissions/1112-v0.03/README.md`](docs/submissions/1112-v0.03/README.md)；本地 40/40 测试通过，待新对局验证。
-- 2026-11-12：post-v0.03 本地 nav 模拟发现 **v0.03 在 dust2 A 回合会在 near-site patrol/via 边界来回切 goal，120 s 内 timeout**；当前工作区已修（T 下包前不 patrol、via 到 `site.radius` 才关、dust2 旧卡点 soft hazard）。该修正尚未提交，建议在下一轮前作为 v0.04 提交。
-- v0.01–v0.02 的状态只跟踪 `main` 账户；v0.03 记录 `main` 和 `account2`。其他账户用 `accounts --check`、`collect` 或批量提交的 `--receipt-out` 查看。
+- 2026-11-12：post-v0.03 本地 nav 模拟发现 **v0.03 在 dust2 A 回合会在 near-site patrol/via 边界来回切 goal，120 s 内 timeout**；已修（T 下包前不 patrol、via 到 `site.radius` 才关、dust2 旧卡点 soft hazard）。
+- 2026-11-12 15:31 UTC：`1112-v0.04`（前进跳 / 台阶跳 / `map_patches.py` / Mirage / T 方兜底）提交到 `main` 和 `account2`；admission 均 `passed`，`main` version `4`、`account2` version `3` 已激活。详见 [`docs/submissions/1112-v0.04/README.md`](docs/submissions/1112-v0.04/README.md)；本地 53/53 测试通过，待新对局验证。
+- 2026-11-13 00:14 CST：Dust2 录制轨迹跟随修正版 [`1113-v0.06`](docs/submissions/1113-v0.06/README.md) 仅提交到 `account2`；admission `passed`，account2 version `5` 已激活，`main` 仍为 version `4`。本地全量测试 59/59 通过。
+- v0.01–v0.02 的状态只跟踪 `main` 账户；v0.03–v0.06 记录 `main` 和 `account2`。其他账户用 `accounts --check`、`collect` 或批量提交的 `--receipt-out` 查看。
 - 上传 / 准入 / 激活成功不代表完整对局、比分或排名。

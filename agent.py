@@ -2,6 +2,8 @@
 import heapq
 import math
 
+import map_patches
+
 # Navigation tolerances.  The waypoint radius is deliberately larger than
 # 1 m: a 1 m radius makes the agent turn back to a node it has just passed
 # when the engine's collision shape stops it a little short.
@@ -12,6 +14,22 @@ STUCK_AFTER = 20
 STUCK_SKIP = 80
 NO_PROGRESS_AFTER = 60
 
+# Waypoint progress / jump recovery.  A sliding collision response can move
+# the agent every tick while it makes no net progress toward the waypoint;
+# the old per-tick "did the position change?" test then never fired.  Count
+# net distance gained instead and try a forward jump before skipping.
+WAYPOINT_PROGRESS = 0.4
+JUMP_AFTER_TICKS = 12
+JUMP_COOLDOWN_TICKS = 24
+JUMP_ATTEMPTS = 3
+
+# TEMPORARY competition crutch.  Early-competition nav meshes are noisy and
+# agents pile up at spawn.  If T has not planted 40 s after round_start, all
+# T seats abandon the site plan and walk to the CT spawn to force themselves
+# out of the spawn area.  Remove once edge validation / jump recovery are
+# proven in real matches.
+TEMP_T_CT_FALLBACK_TICKS = 40 * 60
+
 # Traversal feedback.  A nav edge is not proof that the collision world lets
 # the agent through; penalize edges that repeatedly trap it, and decay the
 # penalty when the edge is traversed successfully.
@@ -19,14 +37,6 @@ EDGE_PENALTY_STEP = 4.0
 EDGE_PENALTY_DECAY = 0.8
 EDGE_PENALTY_MAX = 8.0
 REVERSE_EDGE_PENALTY = 1.5
-# Soft hazards learned from real replays.  v0.02 seat 3 oscillated at
-# (83.4, 88.2) on T side and at (160.63, 125.71) on the CT approach to A;
-# seed those incident edges with a high penalty until the collision mesh can
-# be tested locally.
-MAP_HAZARDS = {
-    "dust2-cs2-v54": [(83.4, 88.2, 3.0), (160.63, 125.71, 3.0)],
-    "mirage-cs2-v54": [(42.8, 66.4, 4.5)],
-}
 # Source adjacency is directional and may encode drops/one-way ledges.  Do not
 # synthesize reverse edges until they are verified in the collision world.
 USE_REVERSE_SOURCE_EDGES = False
@@ -34,6 +44,8 @@ USE_REVERSE_SOURCE_EDGES = False
 # Movement / combat tuning.
 SPRINT_DISTANCE = 20.0
 STAMINA_MIN = 0.2
+REPLAY_SEARCH_FRAMES = 80
+REPLAY_LOOKAHEAD_METERS = 2.5
 PATROL_NEAR_SITE_PAD = 12.0
 COMBAT_TIMEOUT_TICKS = 90      # match ticks (~1.5 s) without fire
 COMBAT_COOLDOWN_TICKS = 60     # move-only window after a stalled combat
@@ -52,14 +64,90 @@ def angle(value):
     return (value + math.pi) % (2 * math.pi) - math.pi
 
 
+def follow_trajectory(frames, cursor, pos, yaw, pitch):
+    """Track recorded world positions and view angles with live feedback."""
+    if not frames:
+        return cursor, {}
+    start = max(0, min(cursor, len(frames) - 1))
+    stop = min(len(frames), start + REPLAY_SEARCH_FRAMES + 1)
+    closest = min(
+        range(start, stop),
+        key=lambda index: ((frames[index][0] - pos[0]) ** 2
+                           + (frames[index][1] - pos[1]) ** 2))
+    cursor = max(start, closest)
+    frame = frames[cursor]
+
+    if (cursor + 1 < len(frames) and not frame[5] & 15
+            and math.hypot(frame[0] - pos[0], frame[1] - pos[1]) < 0.5):
+        next_frame = frames[cursor + 1]
+        if math.hypot(next_frame[0] - frame[0],
+                      next_frame[1] - frame[1]) < 0.01:
+            return cursor + 1, {
+                "move_forward": 0.0, "move_right": 0.0,
+                "yaw_rate": clip(angle(next_frame[3] - yaw) / 0.15),
+                "pitch_rate": clip((next_frame[4] - pitch) / 0.1),
+                "sprint": False, "walk": False, "crouch": False,
+            }
+
+    target_index = cursor
+    travelled = 0.0
+    while target_index + 1 < len(frames) and travelled < REPLAY_LOOKAHEAD_METERS:
+        here, there = frames[target_index], frames[target_index + 1]
+        travelled += math.hypot(there[0] - here[0], there[1] - here[1])
+        target_index += 1
+    target = frames[target_index]
+
+    target_dx, target_dy = target[0] - pos[0], target[1] - pos[1]
+    target_length = math.hypot(target_dx, target_dy)
+    if target_length > 0.1:
+        target_x, target_y = target_dx / target_length, target_dy / target_length
+    else:
+        target_x, target_y = 0.0, 0.0
+
+    # The recorded key vector is a feed-forward hint; position feedback
+    # corrects it when live movement speed or mouse motion differs.
+    mask = frame[5]
+    forward = bool(mask & 1) - bool(mask & 4)
+    right = bool(mask & 8) - bool(mask & 2)
+    source_yaw = frame[3]
+    input_x = forward * math.cos(source_yaw) + right * math.sin(source_yaw)
+    input_y = -forward * math.sin(source_yaw) + right * math.cos(source_yaw)
+    input_length = math.hypot(input_x, input_y)
+    if input_length:
+        input_x, input_y = input_x / input_length, input_y / input_length
+    move_x = target_x * 0.7 + input_x * 0.3
+    move_y = target_y * 0.7 + input_y * 0.3
+    move_length = math.hypot(move_x, move_y)
+    if move_length:
+        move_x, move_y = move_x / move_length, move_y / move_length
+    move_forward = move_x * math.cos(yaw) - move_y * math.sin(yaw)
+    move_right = move_x * math.sin(yaw) + move_y * math.cos(yaw)
+    yaw_error = angle(target[3] - yaw)
+    pitch_error = target[4] - pitch
+    sprint = bool(mask & 16)
+    return cursor, {
+        "move_forward": clip(move_forward),
+        "move_right": clip(move_right),
+        "yaw_rate": clip(yaw_error / 0.15),
+        "pitch_rate": clip(pitch_error / 0.1),
+        "sprint": sprint,
+        "walk": False,
+        "crouch": False,
+    }
+
+
 class Player:
     def __init__(self):
         self.nodes, self.edges, self.sites = {}, {}, []
+        self.map_patch = map_patches.for_map(None)
+        self.ct_spawn = None
         self.path, self.goal = [], None
         self.round = None
         self.last_position, self.stuck = None, 0
         self.blocked = set()
-        self.wp_point, self.wp_best, self.wp_ticks = None, None, 0
+        self.wp_point, self.wp_ticks = None, 0
+        self.wp_last_d, self.wp_progress = None, 0.0
+        self.jump_attempts, self.jump_last_tick = 0, -1000000
         self.waypoints = {}
         self.plant_zones = {}
         self.plant_points = {}
@@ -80,9 +168,32 @@ class Player:
         self.combat_start_tick = None
         self.combat_last_fire_tick = None
         self.combat_cooldown_until = 0
+        self.map_id = None
+        self.replay_round = None
+        self.replay_cursor = 0
+        self.replay_rejoin_index = None
+        self.replay_done = False
+
+    @staticmethod
+    def _first_spawn(row, side, pad_side):
+        """First CT/T spawn pad, supporting both public static layouts."""
+        pads = (row.get("spawns") or {}).get(side) or []
+        if not pads:
+            pads = (row.get("spawn_pads_by_side") or {}).get(pad_side) or []
+        if not pads:
+            return None
+        raw = pads[0]
+        point = raw.get("position") if isinstance(raw, dict) else raw
+        if not point or len(point) < 2:
+            return None
+        return [float(point[0]), float(point[1]),
+                float(point[2]) if len(point) > 2 else 0.0]
 
     def load_map(self, row):
+        self.map_id = row.get("id")
         self.sites = row["sites"]
+        self.map_patch = map_patches.for_map(row.get("id"))
+        self.ct_spawn = self._first_spawn(row, "CT", "defend")
         self.nodes = {n["id"]: n["position"]
                       for n in row["nav"]["nodes"]}
         self.edges = {key: [] for key in self.nodes}
@@ -118,8 +229,7 @@ class Player:
         self.wp_from_id = None
         self.blocked.clear()
         self.edge_penalty.clear()
-        for hazard_x, hazard_y, hazard_radius in MAP_HAZARDS.get(
-                row.get("id"), ()):
+        for hazard_x, hazard_y, hazard_radius in self.map_patch.hazards:
             for node_id, point in self.nodes.items():
                 if math.hypot(point[0] - hazard_x,
                               point[1] - hazard_y) > hazard_radius:
@@ -144,7 +254,9 @@ class Player:
         self._reset_waypoint_progress()
 
     def _reset_waypoint_progress(self):
-        self.wp_point, self.wp_best, self.wp_ticks = None, None, 0
+        self.wp_point, self.wp_ticks = None, 0
+        self.wp_last_d, self.wp_progress = None, 0.0
+        self.jump_attempts = 0
 
     def _penalize_edge(self, here, there):
         """Remember that an edge trapped the agent; cap the penalty."""
@@ -605,44 +717,93 @@ class Player:
                           yaw_rate=0.0, walk=True, sprint=False)
             return action
         if self.wp_point != tuple(point):
-            self.wp_point, self.wp_best, self.wp_ticks = tuple(point), d, 0
-        elif d < self.wp_best - 0.1:
-            self.wp_best, self.wp_ticks = d, 0
+            self.wp_point, self.wp_ticks = tuple(point), 0
+            self.wp_last_d, self.wp_progress = d, 0.0
+            self.jump_attempts = 0
         else:
-            self.wp_ticks += 1
+            if self.wp_last_d is not None:
+                self.wp_progress += self.wp_last_d - d
+            self.wp_last_d = d
+            if self.wp_progress >= WAYPOINT_PROGRESS:
+                self.wp_ticks = 0
+                self.wp_progress = 0.0
+                self.jump_attempts = 0
+            else:
+                self.wp_ticks += 1
 
         # Do not walk backwards while turning.  A large heading error means
         # the target is behind; turn in place, then move.
+        aligned = abs(error) <= TURN_IN_PLACE
         scale = 1.0 if sprint else 0.75
         forward = scale * math.cos(error)
-        if abs(error) > TURN_IN_PLACE:
+        if not aligned:
             forward = 0.0
         strafe = -scale * math.sin(error)
         moving = abs(forward) > 0.1 or abs(strafe) > 0.2
         moved = (self.last_position is None
                  or distance(pos, self.last_position) > 0.01)
-        if abs(error) > TURN_IN_PLACE:
+        if not aligned:
             # Turning in place is intentional; do not fire the unstick
-            # recovery and interrupt the turn.
+            # recovery and interrupt the turn.  The jump check also requires
+            # alignment, so a long turn cannot turn into a forward jump.
             self.stuck = 0
+            self.wp_progress = 0.0
         elif moved or not moving:
             self.stuck = 0
         else:
             self.stuck += 1
         self.last_position = pos
+        tick = o["match_tick"]
+        jump_ready = tick - self.jump_last_tick >= JUMP_COOLDOWN_TICKS
+        # A nav edge can end on a small ledge/step.  Jump while still moving
+        # forward instead of walking into it forever.
+        step_up = (aligned
+                   and point[2] - pos[2] >= self.map_patch.step_jump_height
+                   and d <= self.map_patch.step_jump_radius)
+        stalled = (self.wp_ticks >= JUMP_AFTER_TICKS
+                   and self.jump_attempts < JUMP_ATTEMPTS
+                   and jump_ready and aligned)
+        jump_issued = bool(m["grounded"] and (step_up or stalled)
+                           and jump_ready)
         action.update(move_forward=forward,
                       move_right=strafe,
                       yaw_rate=clip(error / 0.15),
                       pitch_rate=clip(-m["pitch"] / 0.1),
                       walk=not sprint, sprint=sprint)
-        if self.stuck > STUCK_AFTER:
-            # A public graph edge may be blocked; back off and strafe.
-            side = 0.7 if (o["match_tick"] // 30) % 2 else -0.7
-            jump = bool(m["grounded"] and self.stuck % 12 == 0)
-            action.update(move_forward=-0.2, move_right=side,
-                          yaw_rate=0.0, jump=jump,
-                          walk=True, sprint=False)
-        if self.stuck > STUCK_SKIP or self.wp_ticks > NO_PROGRESS_AFTER:
+        if jump_issued:
+            action["jump"] = True
+            action["walk"] = False
+            self.jump_last_tick = tick
+            if stalled:
+                # Collision sliding can keep the position changing while the
+                # waypoint never gets closer.  A forward jump is what escaped
+                # the same Mirage T-spawn corner in the R10 replay.
+                self.jump_attempts += 1
+                action.update(move_forward=max(forward, 0.75 * math.cos(error)),
+                              walk=False, sprint=False)
+        if self.stuck > STUCK_AFTER and not jump_issued:
+            # Try a forward jump first.  The old recovery backed away from
+            # the ledge, which cannot climb a step.
+            forward_jump = (m["grounded"] and aligned
+                            and self.jump_attempts < JUMP_ATTEMPTS
+                            and jump_ready)
+            if forward_jump:
+                action.update(move_forward=scale * math.cos(error),
+                              move_right=strafe,
+                              yaw_rate=clip(error / 0.15),
+                              jump=True, walk=False, sprint=False)
+                self.jump_attempts += 1
+                self.jump_last_tick = tick
+            else:
+                # Back off and strafe when jumping is not possible/helpful.
+                side = 0.7 if (tick // 30) % 2 else -0.7
+                jump = bool(m["grounded"] and self.stuck % 12 == 0)
+                action.update(move_forward=-0.2, move_right=side,
+                              yaw_rate=0.0, jump=jump,
+                              walk=True, sprint=False)
+        if (self.stuck > STUCK_SKIP or self.wp_ticks > NO_PROGRESS_AFTER
+                or (self.jump_attempts >= JUMP_ATTEMPTS
+                    and self.wp_ticks > JUMP_AFTER_TICKS * 3)):
             # Re-route from the next waypoint instead of clearing the path
             # and picking the same nearest node again.
             self._advance_waypoint()
@@ -670,6 +831,10 @@ class Player:
             self.combat_last_fire_tick = None
             self.combat_cooldown_until = 0
             self._reset_waypoint_progress()
+            self.replay_round = o["round_index"]
+            self.replay_cursor = 0
+            self.replay_rejoin_index = None
+            self.replay_done = False
         m = o["me"]
         if not m["alive"] or o["phase"] not in ("buy", "live"):
             return {}
@@ -685,6 +850,11 @@ class Player:
         bomb = o["bomb"]
         planted = bomb.get("state") == "planted"
         visible_enemy = bool(o.get("visible")) and not m.get("blind_ticks")
+        replay_active = (
+            self.map_id == "dust2-cs2-v54"
+            and o.get("static_schema_hash") == (
+                "b0c308526d55e56e3a50a5ecf9bdd1b70a02daf560a9a8157931f3b340fb8d66")
+            and o["side"] == "attack" and not planted)
         site = self.choose_site(o)
         site_id = site["id"]
         site_distance = distance(pos, site["center"])
@@ -692,8 +862,18 @@ class Player:
             site["radius"] + PATROL_NEAR_SITE_PAD)
         route_near = site_distance <= site["radius"]
 
+        # TEMPORARY fallback: see TEMP_T_CT_FALLBACK_TICKS.  It only applies
+        # to T before a plant; once the bomb is down, normal retake/watch
+        # logic takes over.
+        ct_fallback = (
+            o["side"] == "attack" and not planted and not replay_active
+            and (o.get("round_tick") or 0) >= TEMP_T_CT_FALLBACK_TICKS
+            and self.ct_spawn is not None)
+
         if planted and bomb.get("position"):
             goal = list(bomb["position"])
+        elif ct_fallback:
+            goal = list(self.ct_spawn)
         elif m.get("carrying_bomb"):
             goal = self.plant_point(site)
         else:
@@ -738,8 +918,9 @@ class Player:
                     goal = list(patrol[self.patrol_index])
             patrol_active = True
         elif (o["side"] == "attack" and not planted
-              and not route_near):
+              and not route_near and not ct_fallback):
             # T side: use the map-authored attack lane before direct A*.
+            # The temporary CT fallback bypasses the site lane entirely.
             via = self.route_lane_points(site_id, o)
             if via:
                 via_key = (o["round_index"], site_id,
@@ -754,7 +935,7 @@ class Player:
                     or (fuse_left is not None and fuse_left < 600)):
                 return dict(action, use="defuse")
 
-        if (m.get("carrying_bomb") and not planted
+        if (m.get("carrying_bomb") and not planted and not ct_fallback
                 and self.in_plant_zone(pos, site)):
             nearest_enemy = min(
                 (distance(pos, [enemy["x"], enemy["y"], enemy["z"]])
@@ -765,6 +946,11 @@ class Player:
                 return dict(action, use="plant")
 
         if visible_enemy:
+            if replay_active:
+                action = self.combat(o, action, gun)
+                action.update(move_forward=0.0, move_right=0.0,
+                              sprint=False, walk=True)
+                return action
             if tick < self.combat_cooldown_until:
                 # Keep aiming while advancing after a stalled fight.
                 action = self.combat_move(o, action, gun, goal)
@@ -794,6 +980,30 @@ class Player:
             self.combat_start_tick = None
             self.combat_last_fire_tick = None
             self.combat_cooldown_until = 0
+
+        if replay_active and not self.replay_done:
+            from dust2_replay import ROUTE
+            if self.replay_rejoin_index is not None:
+                rejoin = list(ROUTE[self.replay_rejoin_index][:3])
+                if distance(pos, rejoin) > 3.0:
+                    return self.move(o, rejoin, action, sprint=True)
+                self.replay_rejoin_index = None
+            cursor, replay_action = follow_trajectory(
+                ROUTE, self.replay_cursor, pos, m["yaw"], m["pitch"])
+            self.replay_cursor = cursor
+            if (cursor >= len(ROUTE) - 80
+                    and distance(pos, ROUTE[-1][:3]) < 1.5):
+                self.replay_done = True
+            if cursor < len(ROUTE) - 1:
+                if not self.replay_done:
+                    rejoin = list(ROUTE[cursor][:3])
+                    if distance(pos, rejoin) > 6.0:
+                        self.replay_rejoin_index = cursor
+                        return self.move(o, rejoin, action, sprint=True)
+                    return dict(action, **replay_action)
+
+        if replay_active and self.replay_done:
+            via, via_key = [], None
 
         if planted and o["side"] == "attack":
             hold_radius = 3.0 if watch is not None else 8.0

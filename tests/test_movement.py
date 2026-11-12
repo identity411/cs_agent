@@ -3,9 +3,12 @@
 Run with: python3 -m unittest discover -s tests -v
 """
 import math
+import json
 import unittest
+from pathlib import Path
 
 import agent
+import map_patches
 
 # Minimal slice of nevaio-r3-v54 around the CT spawn.  The two waypoints
 # behind the agent are the ones that trapped it in the 2026-11-12 match.
@@ -40,6 +43,41 @@ OPEN_MAP = {
             {"id": "goal", "position": [10.0, 0.0, 0.0]},
         ],
         "edges": [{"from": "start", "to": "goal", "kind": "walk"}],
+    },
+}
+
+# A nav edge that ends on a 1.2 m ledge.  Mirage's CT->A approach has the
+# same shape: the next node is above the agent and needs a forward jump.
+STEP_MAP = {
+    "sites": [{"id": "A", "center": [2.0, 0.0, 1.2], "radius": 1.0}],
+    "nav": {
+        "nodes": [
+            {"id": "start", "position": [0.0, 0.0, 0.0]},
+            {"id": "ledge", "position": [2.0, 0.0, 1.2]},
+        ],
+        "edges": [{"from": "start", "to": "ledge", "kind": "walk"}],
+    },
+}
+
+# T-side temporary fallback target: after 40 s without a plant, T walks to
+# the CT spawn instead of staying pinned in its own spawn area.
+T_FALLBACK_MAP = {
+    "id": "test-t-fallback",
+    "sites": [{"id": "A", "center": [10.0, 0.0, 0.0], "radius": 2.0}],
+    "nav": {
+        "nodes": [
+            {"id": "spawn", "position": [0.0, 0.0, 0.0]},
+            {"id": "site", "position": [10.0, 0.0, 0.0]},
+            {"id": "ct", "position": [0.0, 20.0, 0.0]},
+        ],
+        "edges": [
+            {"from": "spawn", "to": "site", "kind": "walk"},
+            {"from": "spawn", "to": "ct", "kind": "walk"},
+        ],
+    },
+    "spawns": {
+        "T": [{"position": [0.0, 0.0, 0.0], "yaw": 0.0, "nav_id": "spawn"}],
+        "CT": [{"position": [0.0, 20.0, 0.0], "yaw": 0.0, "nav_id": "ct"}],
     },
 }
 
@@ -220,6 +258,85 @@ class NavigationRegression(unittest.TestCase):
         self.assertEqual(tuple(agent._player.path[0]), (118.0, 22.0, 0.0))
         self.assertLess(action["yaw_rate"], -0.5)
 
+    def test_recorded_route_tracks_position_instead_of_playback_time(self):
+        track = [
+            (0.0, 0.0, 0.0, 0.0, 0.0, 1),
+            (1.0, 0.0, 0.0, 0.2, 0.0, 1),
+            (2.0, 1.0, 0.0, 0.4, 0.0, 9),
+            (2.0, 2.0, 0.0, 0.6, 0.1, 8),
+        ]
+        cursor, action = agent.follow_trajectory(
+            track, 0, [0.9, 0.0, 0.0], yaw=0.0, pitch=0.0)
+        self.assertGreaterEqual(cursor, 1)
+        self.assertGreater(action["yaw_rate"], 0.0)
+        self.assertGreater(action["pitch_rate"], 0.0)
+        self.assertGreater(action["move_forward"], 0.0)
+        self.assertFalse(action["walk"])
+
+    def test_recorded_route_uses_recorded_input_and_pauses_without_movement(self):
+        track = [
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0),
+            (0.0, 1.0, 0.0, 0.0, 0.0, 8),
+            (0.0, 2.0, 0.0, 0.0, 0.0, 8 | 16),
+        ]
+        _cursor, action = agent.follow_trajectory(
+            track, 0, [0.0, 1.8, 0.0], yaw=0.0, pitch=0.0)
+        self.assertGreater(action["move_right"], 0.0)
+        self.assertTrue(action["sprint"])
+
+    def test_recorded_route_replays_stationary_mouse_aim_one_frame_at_a_time(self):
+        track = [
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0),
+            (0.0, 0.0, 0.0, 0.2, 0.1, 0),
+            (1.0, 0.0, 0.0, 0.2, 0.1, 1),
+        ]
+        cursor, action = agent.follow_trajectory(
+            track, 0, [0.0, 0.0, 0.0], yaw=0.0, pitch=0.0)
+        self.assertEqual(cursor, 1)
+        self.assertEqual(action["move_forward"], 0.0)
+        self.assertEqual(action["move_right"], 0.0)
+        self.assertGreater(action["yaw_rate"], 0.0)
+        self.assertGreater(action["pitch_rate"], 0.0)
+
+    def test_dust2_replay_stops_for_enemy_then_resumes_from_same_cursor(self):
+        row = json.loads((Path(__file__).parent / "fixtures" /
+                          "dust2_static.json").read_text())["map"]
+        obs = observation(76.8352, 81.3056, -math.pi / 2,
+                          match_map=row, z=23.0252)
+        obs.update(side="attack", map_id=row["id"],
+                   static_schema_hash=row["geometry_hash"])
+        obs["bomb"]["site"] = "B"
+        obs["visible"] = [{"x": 76.8352, "y": 86.3056,
+                            "z": 23.4652, "parts": ["chest"],
+                            "crouch": False}]
+        fighting = agent.act(obs)
+        self.assertEqual(fighting["move_forward"], 0.0)
+        self.assertEqual(fighting["move_right"], 0.0)
+        self.assertTrue(fighting["fire"])
+        self.assertEqual(agent._player.replay_cursor, 0)
+        obs.pop("map")
+        obs["visible"] = []
+        resumed = agent.act(obs)
+        self.assertEqual(resumed["move_forward"], 0.0)
+        self.assertGreater(agent._player.replay_cursor, 0)
+        for _ in range(100):
+            resumed = agent.act(obs)
+            if resumed["move_forward"] > 0.0:
+                break
+        self.assertGreater(resumed["move_forward"], 0.0)
+
+    def test_dust2_replay_rejoins_with_nav_after_large_displacement(self):
+        row = json.loads((Path(__file__).parent / "fixtures" /
+                          "dust2_static.json").read_text())["map"]
+        obs = observation(93.0, 81.0, -math.pi / 2,
+                          match_map=row, z=20.0)
+        obs.update(side="attack", map_id=row["id"],
+                   static_schema_hash=row["geometry_hash"])
+        obs["bomb"]["site"] = "B"
+        action = agent.act(obs)
+        self.assertTrue(agent._player.path)
+        self.assertTrue(action.get("sprint"))
+
     def test_blocked_waypoint_is_skipped_instead_of_looped(self):
         obs = observation(117.67, 19.52, 1.357)
         for step in range(220):
@@ -269,6 +386,120 @@ class NavigationRegression(unittest.TestCase):
         action = agent.act(obs)
         self.assertAlmostEqual(action["move_forward"], 0.75)
         self.assertAlmostEqual(action["yaw_rate"], 0.0)
+
+    def test_t_goes_to_ct_spawn_after_40s_without_plant(self):
+        # Before 40 s T keeps the normal site goal.
+        agent.init({})
+        obs = observation(0.0, 0.0, 0.0, round_index=0, tick=2399,
+                          match_map=T_FALLBACK_MAP, seat=0)
+        obs["side"] = "attack"
+        obs["team"] = 0
+        obs["attack_team"] = 0
+        obs["bomb"] = {"state": "carried", "fuse_end_tick": None,
+                       "site": "A"}
+        agent.act(obs)
+        self.assertEqual(agent._player.goal, [10.0, 0.0, 0.0])
+
+        # After 40 s (and before a plant) even the carrier walks to CT spawn.
+        agent.init({})
+        obs = observation(0.0, 0.0, 0.0, round_index=0, tick=2400,
+                          match_map=T_FALLBACK_MAP, seat=0)
+        obs["side"] = "attack"
+        obs["team"] = 0
+        obs["attack_team"] = 0
+        obs["me"]["carrying_bomb"] = True
+        obs["bomb"] = {"state": "carried", "fuse_end_tick": None,
+                       "site": "A"}
+        agent.act(obs)
+        self.assertEqual(agent._player.goal, [0.0, 20.0, 0.0])
+        self.assertIsNone(agent._player.via_key)
+
+    def test_t_fallback_does_not_override_planted_bomb_or_ct_side(self):
+        agent.init({})
+        obs = observation(0.0, 0.0, 0.0, round_index=0, tick=2400,
+                          match_map=T_FALLBACK_MAP, seat=0)
+        obs["side"] = "attack"
+        obs["team"] = 0
+        obs["attack_team"] = 0
+        obs["bomb"] = {"state": "planted", "position": [10.0, 0.0, 0.0],
+                       "fuse_end_tick": 10000}
+        agent.act(obs)
+        self.assertEqual(agent._player.goal, [10.0, 0.0, 0.0])
+
+        agent.init({})
+        obs = observation(0.0, 0.0, 0.0, round_index=0, tick=2400,
+                          match_map=T_FALLBACK_MAP, seat=5)
+        obs["side"] = "defend"
+        obs["team"] = 1
+        obs["attack_team"] = 0
+        obs["bomb"] = {"state": "carried", "fuse_end_tick": None,
+                       "site": "A"}
+        agent.act(obs)
+        self.assertEqual(agent._player.goal, [10.0, 0.0, 0.0])
+
+    def test_map_patch_hazards_are_applied_by_map_id(self):
+        self.assertTrue(map_patches.for_map("mirage-cs2-v54").hazards)
+        self.assertEqual(map_patches.for_map("unknown-map").hazards, ())
+
+        row = {
+            "id": "mirage-cs2-v54",
+            "sites": [{"id": "A", "center": [10.0, 0.0, 0.0],
+                       "radius": 2.0}],
+            "nav": {
+                "nodes": [
+                    {"id": "start", "position": [0.0, 0.0, 0.0]},
+                    {"id": "hazard", "position": [42.8, 66.4, 0.0]},
+                    {"id": "goal", "position": [10.0, 0.0, 0.0]},
+                ],
+                "edges": [
+                    {"from": "start", "to": "hazard", "kind": "walk"},
+                    {"from": "hazard", "to": "goal", "kind": "walk"},
+                ],
+            },
+        }
+        agent._player.load_map(row)
+        self.assertTrue(any(value > 0
+                            for value in agent._player.edge_penalty.values()))
+
+    def test_step_up_waypoint_triggers_forward_jump(self):
+        obs = observation(0.0, 0.0, 0.0, round_index=0, tick=400,
+                          match_map=STEP_MAP, seat=0)
+        action = agent.act(obs)
+        self.assertIs(action.get("jump"), True)
+        self.assertGreater(action["move_forward"], 0.0)
+        self.assertIs(action["walk"], False)
+
+    def test_sliding_stall_jumps_forward_instead_of_waiting(self):
+        # R6 Mirage carrier slid east/west at the T-spawn corner for the
+        # whole round.  Position changes every tick, so the old stuck test
+        # never fired; net progress toward the waypoint was zero.
+        obs = observation(1.0, 0.0, 0.0, round_index=0, tick=400,
+                          match_map=OPEN_MAP, seat=0)
+        jump_actions = []
+        for step in range(20):
+            if step:
+                obs.pop("map", None)
+            obs["match_tick"] = 400 + step * 3
+            obs["me"]["x"] = 1.3 if step % 2 else 0.7
+            action = agent.act(obs)
+            if action.get("jump"):
+                jump_actions.append(action)
+        self.assertTrue(jump_actions)
+        self.assertGreater(jump_actions[0]["move_forward"], 0.0)
+
+    def test_stuck_recovery_tries_forward_jump_before_backoff(self):
+        obs = observation(1.0, 0.0, 0.0, round_index=0, tick=400,
+                          match_map=OPEN_MAP, seat=0)
+        first_jump = None
+        for step in range(40):
+            if step:
+                obs.pop("map", None)
+            obs["match_tick"] = 400 + step * 3
+            action = agent.act(obs)
+            if action.get("jump") and first_jump is None:
+                first_jump = action
+        self.assertIsNotNone(first_jump)
+        self.assertGreater(first_jump["move_forward"], 0.0)
 
     def test_astar_prefers_shorter_distance_not_fewer_edges(self):
         agent._player.load_map(ASTAR_MAP)

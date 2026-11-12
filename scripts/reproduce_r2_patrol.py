@@ -15,9 +15,12 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 DEFAULT_MAP = (ROOT / "data" / "accounts" / "main" / "matches"
                / "36cf9b6c-78ec-469f-b008-daca03bf0e73" / "static.json")
 OLD = ROOT / "docs" / "submissions" / "1112-v0.02" / "agent.py"

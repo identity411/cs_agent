@@ -12,8 +12,14 @@
 - **决策点**：只保留 FPS 专用规范；运行时预算与上传流程放在 skill；不落盘完整武器目录，价格与限额以官方冻结目录为准。
 - **新增 badcase**：[11-12-economy-rotation-combat.md](11-12-economy-rotation-combat.md) — v0.01 对局中经济 / 转点 / 走路 / 蹲射 / 换弹 5 类非卡住问题；v0.02 未覆盖。
 - **新增可观测性规范**：[11-12-match-observability.md](11-12-match-observability.md) — 定义参战 / 开火 / 命中 / 卡死 / 回防指标与变好/变坏判定；首批回填 v0.01 ×1 场 vs v0.02 ×2 场。
-- **新增寻路规范**：[11-12-pathing-routes.md](11-12-pathing-routes.md) — A* + 执行反馈边代价 + dust2 attackRoutes + sprint/战斗超时/plant zone；已随 v0.03 提交/激活，待新对局验证。
+- **新增寻路规范**：[11-12-pathing-routes.md](11-12-pathing-routes.md) — A* + 执行反馈边代价 + dust2 attackRoutes + sprint/战斗超时/plant zone；已随 v0.03 提交/激活。v0.04 又加入前进跳 / 台阶跳，并把地图坐标和阈值移到根目录 `map_patches.py`（`MapPatch` 抽象）；详见 [11-12-mirage-spawn-jump.md](11-12-mirage-spawn-jump.md)。
+- **新增推进点规范**：[11-12-advance-holds.md](11-12-advance-holds.md) — 寻路之后的推进点（跑—停—打—跑、预瞄点/预瞄角度、hold/刹停参数、nevaio 五条 lane 实测数据）；取证自 `da110811` 的 seat 3（网页 Seat 4）；未实现，v0.05 候选。
 - **v0.03 提交**：[`1112-v0.03`](../submissions/1112-v0.03/README.md) — 包含 A*、dust2 attackRoutes、R2 包点 patrol、sprint / 战斗超时 / plant zone；`main` version `3`、`account2` version `2` 均 admission `passed` 并激活。
+- **v0.04 提交**：[`1112-v0.04`](../submissions/1112-v0.04/README.md) — 前进跳 / 台阶跳、`map_patches.py`、Mirage / dust2 soft hazard、T 方 pre-plant patrol 振荡修复与临时 40 s → CT spawn 兜底；`main` version `4`、`account2` version `3` 均 admission `passed` 并激活。
+
+### 2026-11-13
+- **v0.05 提交**：[`1113-v0.05`](../submissions/1113-v0.05/README.md) — 将 Dust2 用户录制的 2002 帧轨迹转为位置/视角闭环跟随；仅 `account2` version `4` admission `passed` 并激活。
+- **v0.06 提交**：[`1113-v0.06`](../submissions/1113-v0.06/README.md) — 原地准星帧逐拍跟随修正版；仅 `account2` version `5` admission `passed` 并激活，替代 account2 v4。
 
 ## 实测状态（2026-11-12）
 
@@ -21,6 +27,9 @@
 - Python 提交路径已实测：`python-agent-v1` ZIP → admission `passed` → 版本 `1` 激活；网页参赛条目 `f81706cb-1aa5-54e6-9e4b-e1199ca25820` 显示 `version.number = 1`。详见 [`../submissions/1112-v0.01/README.md`](../submissions/1112-v0.01/README.md)。
 - 2026-11-12：出生点卡住修复版已提交，admission `passed`，version `2` 激活（entry 显示 `version.number = 2`、`code_hash_short = 033716bdfb0c`）。详见 [`../submissions/1112-v0.02/README.md`](../submissions/1112-v0.02/README.md)；12:00 UTC 两场已回填，见 [11-12-match-observability.md](11-12-match-observability.md)，长期验证仍待完成。
 - 2026-11-12：A* / attackRoutes / patrol / 战斗控制版已提交到 `main` 和 `account2`，admission 均 `passed`；`main` version `3`、`account2` version `2` 激活（两者 entry 均显示 `code_hash_short = 07f6516dfb12`）。详见 [`../submissions/1112-v0.03/README.md`](../submissions/1112-v0.03/README.md)；待下一场正式对局回填。
+- 2026-11-12 15:31 UTC：前进跳 / 台阶跳 / `map_patches.py` / Mirage 修正版已提交到 `main` 和 `account2`，admission 均 `passed`；`main` version `4`、`account2` version `3` 激活（两者 entry 的 `code_hash_short = 765af129d095`）。详见 [`../submissions/1112-v0.04/README.md`](../submissions/1112-v0.04/README.md)；待下一场正式对局回填。
+- 2026-11-13 00:06 CST：Dust2 用户录制轨迹跟随版仅提交到 `account2`，admission `passed`、version `4` 激活，entry `code_hash_short = b91f85504c7b`。详见 [`../submissions/1113-v0.05/README.md`](../submissions/1113-v0.05/README.md)；正式对局效果待验证。
+- 2026-11-13 00:14 CST：Dust2 录制轨迹原地准星帧逐拍修正版仅提交到 `account2`，admission `passed`、version `5` 激活，entry `code_hash_short = c00849609e14`。详见 [`../submissions/1113-v0.06/README.md`](../submissions/1113-v0.06/README.md)；正式对局效果待验证。
 - `/api/openapi.json` **不列出** `/api/v1/python-submissions` 路由；实测端点、预算与故障语义见 [agx-submit skill](../../.claude/skills/agx-submit/SKILL.md)。
 - `GET /api/v1/games/fps` 的 `example_code` / `baselines` 是 JavaScript 参考，不代表提交语言；Python 以 `GET /api/v1/python-submissions/templates/fps` 的 `profile` / `files` 为准。
 
@@ -54,7 +63,9 @@
 - [11-12-site-center-hold.md](11-12-site-center-hold.md) — badcase：到达包点后停在中心不动（R2）。
 - [11-12-economy-rotation-combat.md](11-12-economy-rotation-combat.md) — badcase：v0.01 对局的 5 类非卡住问题（经济 / 转点 / 走路 / 蹲射 / 换弹）。
 - [11-12-match-observability.md](11-12-match-observability.md) — 规范：对局可观测性指标（参战 / 命中 / 卡死 / 回防）与版本对比判定。
-- [11-12-pathing-routes.md](11-12-pathing-routes.md) — 规范：A* 寻路、dust2 进攻路线、sprint/战斗超时/plant zone。
+- [11-12-pathing-routes.md](11-12-pathing-routes.md) — 规范：A* 寻路、dust2 进攻路线、sprint/战斗超时/plant zone、前进跳 / 台阶跳、`map_patches.py`、临时 T 40 s → CT spawn 兜底。
+- [11-12-advance-holds.md](11-12-advance-holds.md) — 规范：寻路之后的推进点（跑—停—打—跑、预瞄点/预瞄角度、hold/刹停参数、nevaio 五条 lane 实测数据）。
+- [11-12-mirage-spawn-jump.md](11-12-mirage-spawn-jump.md) — badcase：Mirage R6/R10 出生点滑动卡住与 CT A 台阶；前进跳修复。
 
 > 完整武器 / 装备 / 投掷物数值不落盘,以官方冻结目录为准。
 
@@ -68,6 +79,7 @@ badcase 采用 `MM-DD-<theme>.md` 命名；新 badcase 按日期追加，不改�
 | 2026-11-12 | [11-12-stuck-at-spawn.md](11-12-stuck-at-spawn.md) | 对局已确认；v0.02 防守侧已改善，dust2 T 侧仍有卡死（见可观测性规范） |
 | 2026-11-12 | [11-12-site-center-hold.md](11-12-site-center-hold.md) | R2 已复现；patrol 修复随 v0.03 提交/激活，待新对局验证 |
 | 2026-11-12 | [11-12-economy-rotation-combat.md](11-12-economy-rotation-combat.md) | 对局已确认（v0.01）；v0.02 回防启动改善、到位仍 0（见可观测性规范） |
+| 2026-11-12 | [11-12-mirage-spawn-jump.md](11-12-mirage-spawn-jump.md) | R6（带包 seat 2）/ R10（带包 seat 1）与 CT A 台阶已用公开帧确认；前进跳随 v0.04 提交/激活，待新对局验证 |
 
 ## 提交版本与改动说明
 
@@ -79,6 +91,9 @@ badcase 采用 `MM-DD-<theme>.md` 命名；新 badcase 按日期追加，不改�
 | `1112-v0.01` | [1112-v0.01/README.md](../submissions/1112-v0.01/README.md) | [agx-submit skill](../../.claude/skills/agx-submit/SKILL.md), [baseline-compatibility.md](baseline-compatibility.md) |
 | `1112-v0.02` | [1112-v0.02/README.md](../submissions/1112-v0.02/README.md) | [11-12-stuck-at-spawn.md](11-12-stuck-at-spawn.md), [11-12-empty-primary-switch-reload.md](11-12-empty-primary-switch-reload.md), [agx-match-query skill](../../.claude/skills/agx-match-query/SKILL.md) |
 | `1112-v0.03` | [1112-v0.03/README.md](../submissions/1112-v0.03/README.md) | [11-12-pathing-routes.md](11-12-pathing-routes.md), [11-12-site-center-hold.md](11-12-site-center-hold.md), [11-12-stuck-at-spawn.md](11-12-stuck-at-spawn.md), [baseline-compatibility.md](baseline-compatibility.md) |
+| `1112-v0.04` | [1112-v0.04/README.md](../submissions/1112-v0.04/README.md) | [11-12-pathing-routes.md](11-12-pathing-routes.md), [11-12-mirage-spawn-jump.md](11-12-mirage-spawn-jump.md), [11-12-stuck-at-spawn.md](11-12-stuck-at-spawn.md), [11-12-site-center-hold.md](11-12-site-center-hold.md), [baseline-compatibility.md](baseline-compatibility.md) |
+| `1113-v0.05` | [1113-v0.05/README.md](../submissions/1113-v0.05/README.md) | [11-12-pathing-routes.md](11-12-pathing-routes.md) |
+| `1113-v0.06` | [1113-v0.06/README.md](../submissions/1113-v0.06/README.md) | [11-12-pathing-routes.md](11-12-pathing-routes.md) |
 
 ## 待补 / 待核实
 
@@ -89,6 +104,7 @@ badcase 采用 `MM-DD-<theme>.md` 命名；新 badcase 按日期追加，不改�
 - [x] v0.02 对局可观测性回填（2 场 / 40 回合；卡死/到点改善、交火未改善、回防启动改善但到位 0；见 [11-12-match-observability.md](11-12-match-observability.md)）
 - [ ] 新增 dust2 T 侧卡死 badcase 的修复与验收（R13/R14/R15/R17/R19）
 - [ ] A* + attackRoutes + sprint/战斗超时/plant zone 的新对局验证（见 [11-12-pathing-routes.md](11-12-pathing-routes.md)）
-- [ ] post-v0.03 修正（T pre-plant patrol 振荡、dust2 soft hazard、本地 nav 模拟器）提交/新对局验证（见 [11-12-pathing-routes.md](11-12-pathing-routes.md)）
+- [ ] 推进点（Advance Holds）实现与下一场 nevaio 回填（见 [11-12-advance-holds.md](11-12-advance-holds.md)）
+- [x] post-v0.03 修正已作为 v0.04 提交/激活（T pre-plant patrol 振荡、soft hazard、前进跳 / 台阶跳、`map_patches.py`）；待新对局验证（见 [11-12-pathing-routes.md](11-12-pathing-routes.md) 与 [11-12-mirage-spawn-jump.md](11-12-mirage-spawn-jump.md)）
 
 > 官方指南中的源码行号仅用于核对语义，不是运行时依赖。不要从全知录像或训练导出重建观察。

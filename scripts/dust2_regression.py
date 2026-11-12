@@ -6,9 +6,12 @@ import argparse
 import importlib.util
 import json
 import math
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 DEFAULT_MAP = ROOT / "tests" / "fixtures" / "dust2_static.json"
 
 

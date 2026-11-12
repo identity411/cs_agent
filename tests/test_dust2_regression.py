@@ -7,6 +7,8 @@ from pathlib import Path
 
 from scripts.dust2_regression import (detect_traps, load_fixed_map,
                                       load_trace, probe_spawns)
+from scripts.simulate_nav import simulate
+import agent
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +16,13 @@ MAP = ROOT / "tests" / "fixtures" / "dust2_static.json"
 
 
 class Dust2RegressionTest(unittest.TestCase):
+    def test_nav_simulator_activates_recorded_dust2_route(self):
+        row = load_fixed_map(MAP)
+        result = simulate(agent, row, "B", 13, 3, False, (), 2300,
+                          start=(76.8352, 81.3056, 23.0252))
+        self.assertGreater(result["replay_cursor"], 0)
+        self.assertEqual(result["status"], "reached")
+
     def test_command_runs_from_repo_root(self):
         run = subprocess.run(
             [sys.executable, "scripts/dust2_regression.py"],

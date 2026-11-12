@@ -1,0 +1,335 @@
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {acceleratedRaycast, computeBoundsTree, disposeBoundsTree} from 'three-mesh-bvh';
+import staticMap from '../../tests/fixtures/dust2_static.json';
+import {parseAwpyMesh} from './mesh.js';
+import {appendFrame, applyMouseLook, cameraYaw, createRecording, movementVector,
+  sampleFrame, validateRecording} from './recording.js';
+import './style.css';
+
+const map = staticMap.map;
+const hz = 20;
+const dt = 1 / hz;
+const viewport = document.querySelector('#viewport');
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+viewport.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#9fb5bf');
+scene.fog = new THREE.Fog('#9fb5bf', 85, 240);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x50616a, 2.0));
+const sun = new THREE.DirectionalLight(0xffe2ac, 2.2);
+sun.position.set(80, 150, 45);
+scene.add(sun);
+const camera = new THREE.PerspectiveCamera(78, 1, 0.05, 600);
+camera.rotation.order = 'YXZ';
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+let collisionMesh = null;
+const raycaster = new THREE.Raycaster();
+raycaster.firstHitOnly = true;
+
+const nodeById = new Map(map.nav.nodes.map(node => [node.id, node.position]));
+const navPositions = new Float32Array(map.nav.nodes.length * 3);
+for (let i = 0; i < map.nav.nodes.length; i++) {
+  const p = map.nav.nodes[i].position;
+  navPositions.set([p[0], p[2] + 0.03, p[1]], i * 3);
+}
+const dots = new THREE.BufferGeometry();
+dots.setAttribute('position', new THREE.BufferAttribute(navPositions, 3));
+scene.add(new THREE.Points(dots, new THREE.PointsMaterial({color: 0x226b58, size: 0.42, sizeAttenuation: true})));
+const lines = [];
+for (const edge of map.nav.edges) {
+  const a = nodeById.get(edge.from), b = nodeById.get(edge.to);
+  if (a && b) lines.push(a[0], a[2] + 0.02, a[1], b[0], b[2] + 0.02, b[1]);
+}
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
+scene.add(new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({color: 0x62887a, transparent: true, opacity: 0.24})));
+
+for (const site of map.sites) {
+  const p = site.center;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(site.radius - 0.13, site.radius, 60),
+    new THREE.MeshBasicMaterial({color: site.id === 'A' ? 0xc75e42 : 0xe0b857, side: THREE.DoubleSide}));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(p[0], p[2] + 0.08, p[1]);
+  scene.add(ring);
+}
+
+const start = map.spawns.T[0];
+const pose = {position: [...start.position], yaw: start.yaw, pitch: 0};
+const keys = new Set();
+let mouse = [0, 0];
+let recording = null;
+let mode = 'idle';
+let playIndex = 0;
+let loadedModel = null;
+let modelName = null;
+let tick = 0;
+let accumulator = 0;
+let previousTime = performance.now();
+let pointerInside = false;
+let lastPointer = null;
+const routePoints = [];
+const routeLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color: 0xd94e38, linewidth: 2}));
+scene.add(routeLine);
+
+const ui = Object.fromEntries(['record', 'play', 'export', 'timeline', 'time', 'mode', 'position',
+  'angles', 'frames', 'inputs', 'path-summary', 'view-status', 'asset-note', 'click-prompt',
+  'model-file', 'recording-file', 'rerecord'].map(id => [id, document.getElementById(id)]));
+
+function nearestHeight(x, y) {
+  let best = Infinity, height = pose.position[2];
+  for (const node of map.nav.nodes) {
+    const p = node.position;
+    const score = (p[0] - x) ** 2 + (p[1] - y) ** 2 + (p[2] - pose.position[2]) ** 2 * 4;
+    if (score < best) { best = score; height = p[2]; }
+  }
+  return height;
+}
+
+function applyPose() {
+  camera.position.set(pose.position[0], pose.position[2] + 1.62, pose.position[1]);
+  camera.rotation.set(pose.pitch, cameraYaw(pose.yaw), 0);
+}
+
+function collisionDistance(origin, direction, far) {
+  if (!collisionMesh) return null;
+  raycaster.set(origin, direction);
+  raycaster.far = far;
+  const hit = raycaster.intersectObject(collisionMesh, false)[0];
+  return hit || null;
+}
+
+function move() {
+  const forward = Number(keys.has('KeyW')) - Number(keys.has('KeyS'));
+  const right = Number(keys.has('KeyD')) - Number(keys.has('KeyA'));
+  const length = Math.hypot(forward, right) || 1;
+  const speed = keys.has('ShiftLeft') ? 5.0 : 3.0;
+  const f = movementVector('KeyW', pose.yaw);
+  const r = movementVector('KeyD', pose.yaw);
+  const x = (forward * f[0] + right * r[0]) / length;
+  const y = (forward * f[1] + right * r[1]) / length;
+  const deltaX = x * speed * dt, deltaY = y * speed * dt;
+  const lengthXY = Math.hypot(deltaX, deltaY);
+  if (collisionMesh && lengthXY) {
+    const direction = new THREE.Vector3(deltaX / lengthXY, 0, deltaY / lengthXY);
+    const origin = new THREE.Vector3(pose.position[0], pose.position[2] + 0.9, pose.position[1]);
+    if (collisionDistance(origin, direction, lengthXY + 0.35)) return;
+  }
+  const nextX = pose.position[0] + deltaX, nextY = pose.position[1] + deltaY;
+  if (collisionMesh) {
+    const ground = collisionDistance(new THREE.Vector3(nextX, pose.position[2] + 0.55, nextY),
+      new THREE.Vector3(0, -1, 0), 2.0);
+    if (!ground || ground.point.y < pose.position[2] - 1.0) return;
+    pose.position[2] = ground.point.y;
+  } else {
+    pose.position[2] = nearestHeight(nextX, nextY);
+  }
+  pose.position[0] = nextX;
+  pose.position[1] = nextY;
+}
+
+function setMode(next) {
+  mode = next;
+  ui.record.textContent = next === 'recording' ? '停止录制' : '开始录制';
+  ui.record.classList.toggle('active', next === 'recording');
+  ui.play.textContent = next === 'playing' ? '暂停' : '回放';
+  ui.play.disabled = !recording?.frames.length;
+  ui.export.disabled = !recording?.frames.length;
+  ui.timeline.disabled = !recording?.frames.length;
+  ui.mode.textContent = ({idle: '待机', recording: '录制中', playing: '回放中', paused: '已暂停'})[next];
+}
+
+function startFreshRecording() {
+  pose.position = [...start.position];
+  pose.yaw = start.yaw;
+  pose.pitch = 0;
+  keys.clear();
+  recording = createRecording({mapId: map.id, mapHash: map.geometry_hash, hz});
+  recording.assetName = modelName;
+  tick = 0; playIndex = 0; routePoints.length = 0; updateTrail();
+  setMode('recording');
+  requestMouseLock();
+}
+
+function requestMouseLock() {
+  try {
+    const result = renderer.domElement.requestPointerLock();
+    result?.catch(() => {
+      ui['click-prompt'].textContent = '移动鼠标转视角 · 双击锁定鼠标';
+    });
+  } catch {
+    ui['click-prompt'].textContent = '移动鼠标转视角 · 双击锁定鼠标';
+  }
+}
+
+function updateTrail() {
+  routeLine.geometry.dispose();
+  routeLine.geometry = new THREE.BufferGeometry().setFromPoints(routePoints);
+  ui['path-summary'].textContent = recording?.frames.length
+    ? `${recording.frames.length} 帧 · ${(recording.frames.length / hz).toFixed(2)} 秒 · ${modelName || '导航预览'}`
+    : '尚无记录';
+}
+
+function applyRecordedFrame(frame) {
+  pose.position = [...frame.position];
+  pose.yaw = frame.yaw;
+  pose.pitch = frame.pitch;
+  ui.inputs.textContent = frame.keys.join(' ') || '-';
+  ui.timeline.value = String(playIndex);
+}
+
+function step() {
+  if (mode === 'playing') {
+    if (playIndex >= recording.frames.length) { setMode('paused'); return; }
+    applyRecordedFrame(sampleFrame(recording, playIndex++));
+  } else if (mode === 'recording' || pointerInside || document.pointerLockElement === renderer.domElement) {
+    move();
+    if (mode === 'recording') {
+      appendFrame(recording, {tick: tick++, keys: [...keys], mouse,
+        position: pose.position, yaw: pose.yaw, pitch: pose.pitch});
+      routePoints.push(new THREE.Vector3(pose.position[0], pose.position[2] + 0.12, pose.position[1]));
+      if (tick % 5 === 0) updateTrail();
+      ui.timeline.max = String(recording.frames.length - 1);
+    }
+  }
+  mouse = [0, 0];
+  ui.position.textContent = pose.position.map(n => n.toFixed(2)).join(', ');
+  ui.angles.textContent = `${pose.yaw.toFixed(3)}, ${pose.pitch.toFixed(3)} rad`;
+  ui.frames.textContent = `${recording?.frames.length || 0} 帧`;
+  const total = (recording?.frames.length || 0) / hz;
+  const current = mode === 'playing' || mode === 'paused' ? playIndex / hz : total;
+  ui.time.textContent = `${current.toFixed(2)} / ${total.toFixed(2)} 秒`;
+}
+
+function animate(now) {
+  accumulator += Math.min((now - previousTime) / 1000, 0.2);
+  previousTime = now;
+  while (accumulator >= dt) { step(); accumulator -= dt; }
+  applyPose();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+
+ui.record.onclick = () => {
+  if (mode === 'recording') { setMode('paused'); updateTrail(); return; }
+  startFreshRecording();
+};
+ui.rerecord.onclick = startFreshRecording;
+ui.play.onclick = () => {
+  if (mode === 'playing') { setMode('paused'); return; }
+  if (playIndex >= recording.frames.length) playIndex = 0;
+  document.exitPointerLock?.();
+  setMode('playing');
+};
+ui.export.onclick = () => {
+  const blob = new Blob([JSON.stringify(recording, null, 2)], {type: 'application/json'});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `dust2-walk-${new Date().toISOString().replaceAll(':', '-')}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+};
+ui.timeline.oninput = () => {
+  if (!recording?.frames.length) return;
+  setMode('paused'); playIndex = Number(ui.timeline.value);
+  applyRecordedFrame(sampleFrame(recording, playIndex));
+};
+ui['recording-file'].onchange = async event => {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    const loaded = JSON.parse(await file.text());
+    validateRecording(loaded);
+    if (loaded.mapId !== map.id || loaded.mapHash !== map.geometry_hash) throw new Error('地图版本不匹配');
+    recording = loaded; playIndex = 0; tick = loaded.frames.length;
+    routePoints.length = 0;
+    for (const frame of loaded.frames) routePoints.push(new THREE.Vector3(frame.position[0], frame.position[2] + 0.12, frame.position[1]));
+    updateTrail(); ui.timeline.max = String(loaded.frames.length - 1);
+    if (loaded.frames.length) applyRecordedFrame(loaded.frames[0]);
+    setMode('paused');
+  } catch (error) { alert(`导入失败：${error.message}`); }
+};
+ui['model-file'].onchange = async event => {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    const bytes = await file.arrayBuffer();
+    const model = await new GLTFLoader().parseAsync(bytes, '');
+    if (loadedModel) scene.remove(loadedModel);
+    loadedModel = model.scene;
+    scene.add(loadedModel);
+    modelName = file.name;
+    ui['view-status'].textContent = `${file.name} · 外部 3D 模型（未校准）`;
+    ui['asset-note'].textContent = '模型已加载。请核对模型坐标、比例和朝向；本工具仍使用平台导航点估计脚下高度，不代表平台真实碰撞。';
+  } catch (error) { alert(`模型加载失败：${error.message}`); }
+};
+renderer.domElement.addEventListener('mouseenter', () => { pointerInside = true; });
+renderer.domElement.addEventListener('mouseleave', () => {
+  pointerInside = false;
+  lastPointer = null;
+});
+renderer.domElement.addEventListener('dblclick', () => {
+  requestMouseLock();
+});
+document.addEventListener('keydown', event => {
+  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'Space'].includes(event.code)) {
+    keys.add(event.code); event.preventDefault();
+  }
+});
+document.addEventListener('keyup', event => keys.delete(event.code));
+document.addEventListener('mousemove', event => {
+  if (mode === 'playing') return;
+  const locked = document.pointerLockElement === renderer.domElement;
+  if (!locked && event.target !== renderer.domElement) {
+    lastPointer = null;
+    return;
+  }
+  const delta = locked ? [event.movementX, event.movementY]
+    : lastPointer ? [event.clientX - lastPointer[0], event.clientY - lastPointer[1]] : [0, 0];
+  lastPointer = locked ? null : [event.clientX, event.clientY];
+  mouse[0] += delta[0]; mouse[1] += delta[1];
+  Object.assign(pose, applyMouseLook(pose, delta));
+});
+document.addEventListener('pointerlockchange', () => {
+  lastPointer = null;
+  ui['click-prompt'].textContent = document.pointerLockElement === renderer.domElement
+    ? '' : '移动鼠标转视角 · 双击锁定鼠标';
+});
+window.addEventListener('blur', () => keys.clear());
+new ResizeObserver(() => {
+  const width = viewport.clientWidth, height = viewport.clientHeight;
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+  renderer.setSize(width, height);
+}).observe(viewport);
+setMode('idle');
+requestAnimationFrame(animate);
+
+async function loadDefaultMesh() {
+  try {
+    const response = await fetch('/assets/de_dust2.mesh');
+    if (!response.ok) throw new Error('mesh absent');
+    const parsed = parseAwpyMesh(await response.arrayBuffer());
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(parsed.positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(parsed.indices, 1));
+    geometry.computeVertexNormals();
+    geometry.computeBoundsTree();
+    collisionMesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+      color: 0xcbbba3, side: THREE.DoubleSide, roughness: 0.94, metalness: 0,
+    }));
+    scene.add(collisionMesh);
+    modelName = 'awpy-data 2000943 / de_dust2.mesh';
+    ui['view-status'].textContent = 'CS2 Dust2 实际几何 · 抽稀碰撞网格';
+    ui['asset-note'].textContent = '已加载与平台 bounds 对齐的 CS2 world_physics 网格。可走图录制；网格经过抽稀，移动碰撞为本地近似实现。';
+  } catch {
+    ui['view-status'].textContent = '平台导航数据预览 · 未加载 3D 几何';
+  }
+}
+loadDefaultMesh();

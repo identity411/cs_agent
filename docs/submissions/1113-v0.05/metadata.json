@@ -1,0 +1,66 @@
+{
+  "version": "1113-v0.05",
+  "date": "2026-11-13",
+  "competition_id": "2a97f94f-816a-52b7-b4b8-5925db160245",
+  "contract": "rsi-fps-5.5",
+  "status": "account2 submitted; admission passed; version 4 activated",
+  "files": {
+    "agent.py": "7f82e0f17ee9b085df1fb1f6c8a7122164daf1ecca0ce3f60f0c1ab90697afdf",
+    "dust2_replay.py": "76c53c1578c1b583e7fab424290b4d23a3f2e304b2fd4f8f9b1bfb945cd6ba77",
+    "map_patches.py": "c11bc9ca5c5f3cd479c7e9681909d563c55d0fbc814ee3b36e73e5bbfb916265"
+  },
+  "change_note": "README.md",
+  "related_specs": ["docs/spec/11-12-pathing-routes.md"],
+  "api_result": {
+    "schema_version": 1,
+    "command": "submit",
+    "zip": "/private/tmp/agx-account2-dust2-replay.zip",
+    "zip_sha256": "b91f85504c7bbc4f7bb506388010906b151e7c744f5f7eb2cc6bbb313d416e56",
+    "started_at": "2026-11-12T16:06:51.817088+00:00",
+    "accounts": [
+      {
+        "account": "account2",
+        "key_fingerprint": "sha256:7e2fa55a6034",
+        "base_url": "https://agx.cool",
+        "competition_id": "2a97f94f-816a-52b7-b4b8-5925db160245",
+        "game_id": "fps",
+        "agent_id": "291c135e-e580-4762-b007-906a0fb742df",
+        "agent_created": false,
+        "registered": true,
+        "bundle_id": "1629385a-e2d2-43ed-bd58-acbc6de12153",
+        "admission": "passed",
+        "activated": true,
+        "version_id": "0c377bab-0d2d-418d-90e3-d48f3f7e6eb7",
+        "version_number": 4,
+        "zip_sha256": "b91f85504c7bbc4f7bb506388010906b151e7c744f5f7eb2cc6bbb313d416e56",
+        "idempotency_key": "f28e3514-02cb-4a7c-ab89-d77ff27e6246",
+        "activation": {
+          "agent_id": "291c135e-e580-4762-b007-906a0fb742df",
+          "version_id": "0c377bab-0d2d-418d-90e3-d48f3f7e6eb7",
+          "submission_id": "1629385a-e2d2-43ed-bd58-acbc6de12153",
+          "runtime_id": "python-agent-v1"
+        },
+        "entry": {
+          "id": "a23486ad-a765-51b7-b2a9-b090b2d2e48f",
+          "agent_id": null,
+          "version_id": null,
+          "version_number": 4,
+          "code_hash_short": "b91f85504c7b"
+        },
+        "verification": [
+          {
+            "path": "/api/v1/python-submissions/agents/291c135e-e580-4762-b007-906a0fb742df/bundles",
+            "status": 200
+          },
+          {
+            "path": "/api/v1/me/competitions/2a97f94f-816a-52b7-b4b8-5925db160245/versions",
+            "status": 200
+          }
+        ],
+        "status": "activated"
+      }
+    ],
+    "ok": true,
+    "finished_at": "2026-11-12T16:07:05.781717+00:00"
+  }
+}

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dust2 走图录制</title>
+</head>
+<body>
+  <div id="app">
+    <header class="toolbar">
+      <div class="brand"><strong>Dust2</strong><span>走图录制</span></div>
+      <div class="commands">
+        <label class="file-command">导入 GLB / glTF<input id="model-file" type="file" accept=".glb,.gltf" /></label>
+        <button id="record" type="button">开始录制</button>
+        <button id="rerecord" type="button">重新录制</button>
+        <button id="play" type="button" disabled>回放</button>
+        <button id="export" type="button" disabled>导出 JSON</button>
+        <label class="file-command">导入记录<input id="recording-file" type="file" accept=".json" /></label>
+      </div>
+    </header>
+    <main>
+      <div id="viewport" aria-label="Dust2 三维走图视图">
+        <div class="crosshair" aria-hidden="true"></div>
+        <div id="view-status" class="view-status">平台导航数据预览 · 无碰撞网格</div>
+        <div id="click-prompt" class="click-prompt">移动鼠标转视角 · 双击锁定鼠标</div>
+      </div>
+      <aside class="inspector">
+        <div class="section-title">当前状态</div>
+        <dl>
+          <dt>模式</dt><dd id="mode">待机</dd>
+          <dt>地图</dt><dd id="map-id">dust2-cs2-v54</dd>
+          <dt>位置</dt><dd id="position">-</dd>
+          <dt>视角</dt><dd id="angles">-</dd>
+          <dt>采样</dt><dd id="frames">0 帧</dd>
+          <dt>输入</dt><dd id="inputs">-</dd>
+        </dl>
+        <div class="section-title">回放</div>
+        <input id="timeline" type="range" min="0" max="0" value="0" disabled />
+        <div id="time" class="time">0.00 / 0.00 秒</div>
+        <div class="section-title">路径</div>
+        <div id="path-summary" class="path-summary">尚无记录</div>
+        <div class="section-title">地图资源</div>
+        <p id="asset-note">当前仅显示公开导航节点。导入对应版本的真实 3D 模型后可查看几何；位置移动仍需平台碰撞网格才能严格复现。</p>
+      </aside>
+    </main>
+    <footer>W A S D 移动 · 移动鼠标转视角 · 双击锁定鼠标 · Shift 加速 · Esc 退出锁定</footer>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
