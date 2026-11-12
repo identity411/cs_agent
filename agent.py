@@ -2,6 +2,7 @@
 import heapq
 import math
 
+import advance_holds
 import map_patches
 
 # Navigation tolerances.  The waypoint radius is deliberately larger than
@@ -40,6 +41,11 @@ REVERSE_EDGE_PENALTY = 1.5
 # Source adjacency is directional and may encode drops/one-way ledges.  Do not
 # synthesize reverse edges until they are verified in the collision world.
 USE_REVERSE_SOURCE_EDGES = False
+
+# Advance holds / pre-aim anchors.
+PREAIM_DISTANCE = 20.0
+STOP_RADIUS = 1.5
+GATE_MAX_TICKS = 200
 
 # Movement / combat tuning.
 SPRINT_DISTANCE = 20.0
@@ -168,6 +174,14 @@ class Player:
         self.combat_start_tick = None
         self.combat_last_fire_tick = None
         self.combat_cooldown_until = 0
+        self.advance = advance_holds.EMPTY
+        self.advance_route_key = None
+        self.advance_route_name = None
+        self.advance_route_points = []
+        self.advance_index = 0
+        self.gate = None
+        self.gate_ticks = 0
+        self.gate_disabled_round = None
         self.map_id = None
         self.replay_round = None
         self.replay_cursor = 0
@@ -193,6 +207,14 @@ class Player:
         self.map_id = row.get("id")
         self.sites = row["sites"]
         self.map_patch = map_patches.for_map(row.get("id"))
+        self.advance = advance_holds.for_map(row.get("id"))
+        self.advance_route_key = None
+        self.advance_route_name = None
+        self.advance_route_points = []
+        self.advance_index = 0
+        self.gate = None
+        self.gate_ticks = 0
+        self.gate_disabled_round = None
         self.ct_spawn = self._first_spawn(row, "CT", "defend")
         self.nodes = {n["id"]: n["position"]
                       for n in row["nav"]["nodes"]}
@@ -526,6 +548,163 @@ class Player:
         self.attack_route_points = points
         return list(points)
 
+    def advance_lane_points(self, site_id, o):
+        """Pick an advance lane for maps without official attackRoutes."""
+        if o["side"] != "attack" or not self.advance.lanes:
+            return []
+        lanes = self.advance.lanes_for("attack", site_id)
+        if not lanes:
+            return []
+        cache_key = (o["round_index"], site_id,
+                     bool(o["me"].get("carrying_bomb")))
+        if (self.advance_route_key == cache_key
+                and self.advance_route_points):
+            return list(self.advance_route_points)
+        position = [o["me"]["x"], o["me"]["y"], o["me"]["z"]]
+        candidates = []
+        for lane in lanes:
+            lane_length = sum(
+                distance(lane.points[index].stop,
+                         lane.points[index + 1].stop)
+                for index in range(len(lane.points) - 1))
+            candidates.append(
+                (distance(position, lane.points[0].stop) + lane_length,
+                 lane))
+        if not candidates:
+            return []
+        candidates.sort(key=lambda item: item[0])
+        chosen = candidates[0]
+        if (not o["me"].get("carrying_bomb") and len(candidates) > 1
+                and candidates[1][0] <= candidates[0][0] * 1.2):
+            chosen = candidates[
+                (o["seat"] + o["round_index"]) % len(candidates)]
+        lane = chosen[1]
+        self.advance_route_key = cache_key
+        self.advance_route_name = lane.name
+        self.advance_route_points = list(lane.points)
+        return list(lane.points)
+
+    def advance_route_lane(self, site_id):
+        """Advance lane matching the selected official attackRoutes name."""
+        if not self.advance.lanes or not self.attack_route_name:
+            return None
+        return self.advance.lane("attack", site_id,
+                                 self.attack_route_name)
+
+    def advance_aim(self, points, pos):
+        """Aim at the upcoming lane point once inside PREAIM_DISTANCE."""
+        if not points:
+            return None
+        index = min(self.advance_index, len(points) - 1)
+        while (index < len(points) - 1
+               and distance(pos, points[index].stop) <= 2.5):
+            index += 1
+        self.advance_index = index
+        point = points[index]
+        if (distance(pos, point.stop) <= PREAIM_DISTANCE
+                and point.aim is not None):
+            return (point.aim[0], point.aim[1], point.aim_z)
+        return None
+
+    def generic_anchor(self, site):
+        """Nav-derived CT anchor for maps without curated hold data."""
+        if not self.nodes or self.ct_spawn is None:
+            return None
+        center = site["center"]
+        nearest = min(self.nodes, key=lambda node_id:
+                      distance(self.nodes[node_id], center))
+        base = self.ct_spawn or center
+        candidates = [(node_id, self.nodes[node_id])
+                      for node_id in self.edges.get(nearest, [])]
+        if not candidates:
+            return None
+        _node_id, approach = max(
+            candidates, key=lambda item: distance(item[1], base))
+        return advance_holds.AdvanceAnchor(
+            list(self.nodes[nearest]), tuple(approach))
+
+    @staticmethod
+    def aim_errors(m, aim):
+        dx, dy = aim[0] - m["x"], aim[1] - m["y"]
+        yaw_error = angle(math.atan2(-dy, dx) - m["yaw"])
+        eye = 0.95 if m.get("crouch") else 1.62
+        dz = aim[2] - m["z"] - eye
+        pitch_error = (math.atan2(dz, max(0.1, math.hypot(dx, dy)))
+                       - m["pitch"])
+        return yaw_error, pitch_error
+
+    def hold_aim(self, o, action, aim):
+        """Stand still and keep the crosshair on the anchor aim point."""
+        yaw_error, pitch_error = self.aim_errors(o["me"], aim)
+        action.update(move_forward=0.0, move_right=0.0,
+                      yaw_rate=clip(yaw_error / 0.15),
+                      pitch_rate=clip(pitch_error / 0.1),
+                      crouch=False, walk=False, sprint=False)
+        action.pop("jump", None)
+        return action
+
+    def crouch_gate(self, pos, goal):
+        """Return (gate, goal_side) when the goal needs a crouch passage."""
+        if self.gate_disabled_round == self.round:
+            return None
+        for gate in self.map_patch.crouch_gates:
+            dx, dy = pos[0] - gate.center[0], pos[1] - gate.center[1]
+            if math.hypot(dx, dy) > gate.radius:
+                continue
+            pos_side = dx * gate.axis[0] + dy * gate.axis[1]
+            goal_side = ((goal[0] - gate.center[0]) * gate.axis[0]
+                         + (goal[1] - gate.center[1]) * gate.axis[1])
+            if abs(goal_side) < 0.5:
+                continue
+            if pos_side * goal_side > 0 and abs(pos_side) > 0.8:
+                continue
+            return gate, goal_side
+        return None
+
+    def traverse_gate(self, o, goal, gate, goal_side, action):
+        """Crouch-walk through a low passage; never jump inside it."""
+        m = o["me"]
+        pos = [m["x"], m["y"], m["z"]]
+        if self.gate is not gate:
+            self.gate = gate
+            self.gate_ticks = 0
+            self.path, self.path_ids, self.goal = [], [], None
+            self.via_key = None
+        self.gate_ticks += 1
+        if self.gate_ticks > GATE_MAX_TICKS:
+            # Give up for this round instead of bouncing on the ceiling.
+            self.gate = None
+            self.gate_disabled_round = self.round
+            self.path, self.path_ids, self.goal = [], [], None
+            return action
+        direction = 1.0 if goal_side > 0 else -1.0
+        target = [
+            gate.center[0] + gate.axis[0] * direction * (gate.radius + 1.0),
+            gate.center[1] + gate.axis[1] * direction * (gate.radius + 1.0),
+            gate.center[2],
+        ]
+        pos_side = ((pos[0] - gate.center[0]) * gate.axis[0]
+                    + (pos[1] - gate.center[1]) * gate.axis[1])
+        if pos_side * direction > 1.0:
+            # Through the passage; replan from the far side.
+            self.gate = None
+            self.path, self.path_ids, self.goal = [], [], None
+            self.via_key = None
+            return action
+        dx, dy = target[0] - pos[0], target[1] - pos[1]
+        error = angle(math.atan2(-dy, dx) - m["yaw"])
+        aligned = abs(error) <= TURN_IN_PLACE
+        # No lateral strafe inside the passage: turn first, then walk
+        # straight through it so the collision capsule stays centered.
+        forward = 0.8 * math.cos(error) if aligned else 0.0
+        action.update(move_forward=forward,
+                      move_right=0.0,
+                      yaw_rate=clip(error / 0.15),
+                      pitch_rate=clip(-m["pitch"] / 0.1),
+                      crouch=True, walk=True, sprint=False)
+        action.pop("jump", None)
+        return action
+
     def choose_site(self, o):
         sites = {site["id"]: site for site in self.sites}
         bomb = o.get("bomb") or {}
@@ -653,7 +832,8 @@ class Player:
                       crouch=False, walk=False, sprint=False)
         return action
 
-    def move(self, o, goal, action, via=None, via_key=None, sprint=False):
+    def move(self, o, goal, action, via=None, via_key=None, sprint=False,
+             aim=None):
         m = o["me"]
         pos = [m["x"], m["y"], m["z"]]
         if self.goal != goal or self.via_key != via_key:
@@ -709,12 +889,24 @@ class Player:
         point = self.path[0]
         dx, dy = point[0]-pos[0], point[1]-pos[1]
         error = angle(math.atan2(-dy, dx) - m["yaw"])
+        aim_yaw = aim_pitch = None
+        if aim is not None:
+            aim_yaw, aim_pitch = self.aim_errors(m, aim)
+        # Pre-aim: keep the movement vector on the path while the crosshair
+        # stays on the lane's aim point.  Pause pre-aim while turning to a
+        # waypoint that is behind the agent, so it does not run backwards.
+        yaw_error = (aim_yaw if aim_yaw is not None
+                     and abs(error) <= 2 * math.pi / 3 else error)
+        pitch_rate = clip((aim_pitch if aim_pitch is not None
+                           else -m["pitch"]) / 0.1)
         d = distance(pos, point)
         if len(self.path) == 1 and d < 0.6:
             # The final goal is literally under the agent.  Do not spin on
             # a zero-length vector; hold this position.
             action.update(move_forward=0.0, move_right=0.0,
-                          yaw_rate=0.0, walk=True, sprint=False)
+                          yaw_rate=clip(yaw_error / 0.15),
+                          pitch_rate=pitch_rate,
+                          walk=True, sprint=False)
             return action
         if self.wp_point != tuple(point):
             self.wp_point, self.wp_ticks = tuple(point), 0
@@ -767,8 +959,8 @@ class Player:
                            and jump_ready)
         action.update(move_forward=forward,
                       move_right=strafe,
-                      yaw_rate=clip(error / 0.15),
-                      pitch_rate=clip(-m["pitch"] / 0.1),
+                      yaw_rate=clip(yaw_error / 0.15),
+                      pitch_rate=pitch_rate,
                       walk=not sprint, sprint=sprint)
         if jump_issued:
             action["jump"] = True
@@ -790,7 +982,7 @@ class Player:
             if forward_jump:
                 action.update(move_forward=scale * math.cos(error),
                               move_right=strafe,
-                              yaw_rate=clip(error / 0.15),
+                              yaw_rate=clip(yaw_error / 0.15),
                               jump=True, walk=False, sprint=False)
                 self.jump_attempts += 1
                 self.jump_last_tick = tick
@@ -825,6 +1017,12 @@ class Player:
             self.attack_route_site = None
             self.attack_route_name = None
             self.attack_route_points = []
+            self.advance_route_key = None
+            self.advance_route_name = None
+            self.advance_route_points = []
+            self.advance_index = 0
+            self.gate = None
+            self.gate_ticks = 0
             self.carrier_site = None
             self.carrier_site_round = None
             self.combat_start_tick = None
@@ -870,12 +1068,29 @@ class Player:
             and (o.get("round_tick") or 0) >= TEMP_T_CT_FALLBACK_TICKS
             and self.ct_spawn is not None)
 
+        # Authored hold rings win when the map provides them; otherwise the
+        # advance layer supplies a CT anchor (curated, or nav-derived).
+        authored_patrol = (
+            self.patrol_points(site, "defend")
+            if (o["side"] == "defend" and not planted
+                and not m.get("carrying_bomb")) else [])
+        anchor = None
+        advance_aim = None
+        advance_points = []
+        if (o["side"] == "defend" and not planted
+                and not m.get("carrying_bomb") and not authored_patrol):
+            anchor = self.advance.anchor("defend", site_id)
+            if anchor is None:
+                anchor = self.generic_anchor(site)
+
         if planted and bomb.get("position"):
             goal = list(bomb["position"])
         elif ct_fallback:
             goal = list(self.ct_spawn)
         elif m.get("carrying_bomb"):
             goal = self.plant_point(site)
+        elif anchor is not None:
+            goal = list(anchor.stop)
         else:
             goal = list(site["center"])
 
@@ -888,13 +1103,11 @@ class Player:
                 goal = list(watch)
 
         patrol = []
-        if (o["side"] == "defend" and not planted
-                and not m.get("carrying_bomb")
-                and not visible_enemy and near_site):
+        if (authored_patrol and not visible_enemy and near_site):
             # CT defenders use the hold/watch ring.  T attackers should not
             # patrol before the plant: switching between site center and a
             # patrol point near the entry makes the path oscillate.
-            patrol = self.patrol_points(site, o["side"])
+            patrol = authored_patrol
         if patrol:
             key = (site_id, o["side"])
             if self.patrol_site != key:
@@ -919,12 +1132,26 @@ class Player:
             patrol_active = True
         elif (o["side"] == "attack" and not planted
               and not route_near and not ct_fallback):
-            # T side: use the map-authored attack lane before direct A*.
-            # The temporary CT fallback bypasses the site lane entirely.
+            # T side: official attack route first, then advance_holds.
             via = self.route_lane_points(site_id, o)
             if via:
                 via_key = (o["round_index"], site_id,
                            self.attack_route_name)
+                lane = self.advance_route_lane(site_id)
+                advance_points = list(lane.points) if lane else []
+            else:
+                advance_points = self.advance_lane_points(site_id, o)
+                if advance_points:
+                    via = [list(point.stop) for point in advance_points]
+                    via_key = (o["round_index"], site_id,
+                               self.advance_route_name)
+            if via_key is not None and via_key != self.via_key:
+                self.advance_index = 0
+            advance_aim = self.advance_aim(advance_points, pos)
+
+        if (anchor is not None and not visible_enemy
+                and distance(pos, anchor.stop) <= PREAIM_DISTANCE):
+            advance_aim = (anchor.aim[0], anchor.aim[1], anchor.aim_z)
 
         if (o["side"] == "defend" and planted
                 and bomb.get("position")
@@ -981,6 +1208,19 @@ class Player:
             self.combat_last_fire_tick = None
             self.combat_cooldown_until = 0
 
+        gate_info = self.crouch_gate(pos, goal)
+        if gate_info is None and self.gate is not None:
+            self.gate = None
+            self.gate_ticks = 0
+        if gate_info is not None:
+            gate, goal_side = gate_info
+            return self.traverse_gate(o, goal, gate, goal_side, action)
+
+        if (anchor is not None and not planted
+                and distance(pos, anchor.stop) <= STOP_RADIUS):
+            return self.hold_aim(
+                o, action, (anchor.aim[0], anchor.aim[1], anchor.aim_z))
+
         if replay_active and not self.replay_done:
             from dust2_replay import ROUTE
             if self.replay_rejoin_index is not None:
@@ -1018,7 +1258,7 @@ class Player:
                   and not m.get("crouch"))
         action["crouch"] = False
         return self.move(o, goal, action, via=via, via_key=via_key,
-                         sprint=sprint)
+                         sprint=sprint, aim=advance_aim)
 
 
 _player = Player()

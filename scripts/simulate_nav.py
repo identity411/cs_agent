@@ -129,7 +129,19 @@ def simulate(module, map_row: dict, site_id: str, round_index: int,
             still = 0
         last = list(pos)
         if still > 600:
-            status, steps = "stuck", step
+            anchor = None
+            if side == "defend":
+                anchor = getattr(module._player, "advance", None)
+                anchor = (anchor.anchor("defend", site_id)
+                          if anchor is not None and hasattr(anchor, "anchor")
+                          else None)
+            if (anchor is not None
+                    and math.hypot(pos[0] - anchor.stop[0],
+                                   pos[1] - anchor.stop[1]) <= 2.0):
+                # Intentional CT hold: stationary by design, not a trap.
+                status, steps = "holding", step
+            else:
+                status, steps = "stuck", step
             break
     player = module._player
     return {
@@ -143,7 +155,8 @@ def simulate(module, map_row: dict, site_id: str, round_index: int,
         "position": [round(pos[0], 1), round(pos[1], 1)],
         "goal": ([round(value, 1) for value in player.goal]
                  if player.goal is not None else None),
-        "route": getattr(player, "attack_route_name", None),
+        "route": (getattr(player, "attack_route_name", None)
+                  or getattr(player, "advance_route_name", None)),
         "blocked_nodes": len(getattr(player, "blocked", ())),
         "penalized_edges": len(getattr(player, "edge_penalty", {})),
         "replay_cursor": getattr(player, "replay_cursor", 0),

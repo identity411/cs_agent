@@ -7,6 +7,7 @@ import json
 import unittest
 from pathlib import Path
 
+import advance_holds
 import agent
 import map_patches
 
@@ -43,6 +44,47 @@ OPEN_MAP = {
             {"id": "goal", "position": [10.0, 0.0, 0.0]},
         ],
         "edges": [{"from": "start", "to": "goal", "kind": "walk"}],
+    },
+}
+
+# Mirage's crouch-only passage into VIP ("dog hole") at (75.3, 66.2).
+# The agent must crouch through the low passage instead of jumping.
+MIRAGE_DOGHOLE_MAP = {
+    "id": "mirage-cs2-v54",
+    "sites": [{"id": "A", "center": [75.3, 69.0, 15.83],
+               "radius": 6.0}],
+    "nav": {
+        "nodes": [
+            {"id": "south", "position": [75.3, 62.0, 15.83]},
+            {"id": "gate", "position": [75.3, 66.2, 15.83]},
+            {"id": "north", "position": [75.3, 69.0, 15.83]},
+            {"id": "site", "position": [75.3, 80.0, 15.83]},
+        ],
+        "edges": [
+            {"from": "south", "to": "gate", "kind": "walk"},
+            {"from": "gate", "to": "north", "kind": "walk"},
+            {"from": "north", "to": "site", "kind": "walk"},
+        ],
+    },
+    "spawns": {
+        "T": [{"position": [75.3, 62.0, 15.83], "yaw": 0.0}],
+        "CT": [{"position": [75.3, 62.0, 15.83], "yaw": 0.0}],
+    },
+}
+
+# Minimal Mirage A-site anchor: the CT should hold at the east edge and
+# keep the crosshair on the A-ramp choke, not turn into the boxes.
+MIRAGE_A_MAP = {
+    "id": "mirage-cs2-v54",
+    "sites": [{"id": "A", "center": [51.5, 87.3, 15.55],
+               "radius": 6.0}],
+    "nav": {
+        "nodes": [{"id": "a", "position": [51.5, 87.3, 15.55]}],
+        "edges": [],
+    },
+    "spawns": {
+        "T": [{"position": [96.6, 130.1, 15.83], "yaw": 0.0}],
+        "CT": [{"position": [51.5, 53.3, 13.05], "yaw": 0.0}],
     },
 }
 
@@ -487,6 +529,63 @@ class NavigationRegression(unittest.TestCase):
         self.assertTrue(jump_actions)
         self.assertGreater(jump_actions[0]["move_forward"], 0.0)
 
+    def test_mirage_doghole_is_crossed_crouched_without_jump(self):
+        obs = observation(75.3, 64.5, 0.0, round_index=0, tick=400,
+                          match_map=MIRAGE_DOGHOLE_MAP, seat=0)
+        obs["side"] = "attack"
+        obs["team"] = 0
+        obs["attack_team"] = 0
+        obs["bomb"] = {"state": "carried", "fuse_end_tick": None,
+                       "site": "A"}
+        action = agent.act(obs)
+        self.assertTrue(action.get("crouch"))
+        self.assertIsNone(action.get("jump"))
+
+        obs.pop("map", None)
+        obs["match_tick"] = 403
+        obs["me"]["x"], obs["me"]["y"] = 75.3, 67.0
+        action = agent.act(obs)
+        self.assertTrue(action.get("crouch"))
+        self.assertIsNone(action.get("jump"))
+
+        obs["match_tick"] = 406
+        obs["me"]["x"], obs["me"]["y"] = 75.3, 68.0
+        action = agent.act(obs)
+        self.assertFalse(action.get("crouch"))
+        self.assertIsNot(action.get("jump"), True)
+
+    def test_mirage_ct_a_holds_and_aims_a_long(self):
+        obs = observation(51.5, 87.3, 0.0, round_index=7, tick=400,
+                          match_map=MIRAGE_A_MAP, seat=7, z=15.55)
+        action = agent.act(obs)
+        self.assertEqual(action.get("move_forward"), 0.0)
+        self.assertEqual(action.get("move_right"), 0.0)
+        self.assertFalse(action.get("crouch"))
+        self.assertIsNone(action.get("jump"))
+        # A long is north of the anchor: the engine yaw must decrease.
+        self.assertLess(action.get("yaw_rate"), 0.0)
+
+    def test_preaim_keeps_crosshair_on_aim_while_pathing(self):
+        agent._player.load_map(OPEN_MAP)
+        obs = observation(0.0, 0.0, 0.0, round_index=0, tick=400,
+                          match_map=OPEN_MAP, seat=0)
+        action = agent._player.move(obs, [10.0, 0.0, 0.0],
+                                    {"weapon_slot": 0},
+                                    aim=(0.0, 10.0, 0.0))
+        self.assertLess(action["yaw_rate"], 0.0)
+        self.assertGreater(action["move_forward"], 0.0)
+
+    def test_t_lane_preaim_uses_advance_aim_point(self):
+        agent._player.load_map(OPEN_MAP)
+        points = advance_holds.for_map("nevaio-r3-v54").lane(
+            "attack", "A", "A_long").points
+        aim = agent._player.advance_aim(points, [60.0, 111.0, 1.2])
+        self.assertAlmostEqual(aim[0], 123.0)
+        self.assertAlmostEqual(aim[1], 77.8)
+        self.assertAlmostEqual(aim[2], 2.84)
+        self.assertIsNone(agent._player.advance_aim(
+            points, [0.0, 0.0, 0.0]))
+
     def test_stuck_recovery_tries_forward_jump_before_backoff(self):
         obs = observation(1.0, 0.0, 0.0, round_index=0, tick=400,
                           match_map=OPEN_MAP, seat=0)
@@ -580,6 +679,27 @@ class NavigationRegression(unittest.TestCase):
         self.assertGreater(agent._player.combat_cooldown_until,
                            obs["match_tick"])
         self.assertIsNotNone(action.get("move_forward"))
+
+
+class AdvanceHoldsRegression(unittest.TestCase):
+    def test_pre_45_anchors_exist_for_all_sampled_maps(self):
+        for map_id in ("nevaio-r3-v54", "mirage-cs2-v54",
+                       "dust2-cs2-v54", "borgo-r3-v54"):
+            data = advance_holds.for_map(map_id)
+            self.assertIsNotNone(data.anchor("defend", "A"), map_id)
+
+    def test_nevaio_pre_45_lanes(self):
+        data = advance_holds.for_map("nevaio-r3-v54")
+        for site, name in (("A", "A_long"), ("A", "A_mid"),
+                           ("B", "B_drill")):
+            lane = data.lane("attack", site, name)
+            self.assertIsNotNone(lane, name)
+            self.assertGreater(len(lane.points), 0)
+
+    def test_unknown_map_is_neutral(self):
+        data = advance_holds.for_map("unknown-map")
+        self.assertEqual(data.lanes, {})
+        self.assertEqual(data.anchors, {})
 
 
 if __name__ == "__main__":

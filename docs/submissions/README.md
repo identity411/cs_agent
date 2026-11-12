@@ -19,3 +19,4 @@
 | `1112-v0.04` | 2026-11-12 | 已提交；admission passed；main v4 / account2 v3（前进跳 / 台阶跳 / map_patches / Mirage） | [README](1112-v0.04/README.md) |
 | `1113-v0.05` | 2026-11-13 | 已提交；admission passed；account2 v4（Dust2 录制轨迹闭环跟随） | [README](1113-v0.05/README.md) |
 | `1113-v0.06` | 2026-11-13 | 已提交；admission passed；account2 v5（原地准星帧逐拍回放） | [README](1113-v0.06/README.md) |
+| `1113-v0.07` | 2026-11-13 | 已提交；admission passed；account2 v6（VIP 狗洞 crouch / 推进预瞄锚点 / Mirage CT A） | [README](1113-v0.07/README.md) |

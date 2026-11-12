@@ -1,6 +1,6 @@
 # 规范：A* 寻路、地图进攻路线与移动/战斗控制
 
-Status: **2026-11-13 Dust2 用户轨迹跟随已随 `1113-v0.06` 提交到 account2 version 5 并激活；原有 `1112-v0.04` 仍为 main version 4。全量 unittest 59/59 通过；正式对局效果待验证。**
+Status: **2026-11-13 Dust2 用户轨迹跟随随 `1113-v0.06`（account2 v5）、VIP 狗洞 crouch / 推进预瞄锚点随 `1113-v0.07`（account2 v6）提交并激活；原有 `1112-v0.04` 仍为 main version 4。全量 unittest 66/66 通过；正式对局效果待验证。**
 Date: 2026-11-12
 Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照）· [1113-v0.05](../submissions/1113-v0.05/README.md)（Dust2 用户轨迹跟随）· [1113-v0.06](../submissions/1113-v0.06/README.md)（原地准星帧修正）· [11-12-advance-holds.md](./11-12-advance-holds.md)（下游：寻路之后的推进点 / 预瞄角 / 刹停）· [11-12-mirage-spawn-jump.md](./11-12-mirage-spawn-jump.md)（Mirage R6/R10 与 CT A 卡台阶）· [11-12-match-observability.md](./11-12-match-observability.md)（卡死/到点/回防指标）· [11-12-stuck-at-spawn.md](./11-12-stuck-at-spawn.md)（出生点卡住）· [11-12-site-center-hold.md](./11-12-site-center-hold.md)（包点中心 hold）· [maps.md](./maps.md)（nav / bot_waypoints 边界）· [agent-interface.md](./agent-interface.md)（动作字段）
 
@@ -105,6 +105,7 @@ patch.step_jump_radius                # 台阶跳水平距离
 - 目的是让 `A_split` 这类原本经过 244/307 附近的分支优先绕开；`A_long` 本来就不经过该点；
 - 如果后续碰撞级验证证明该点可走，应降低/删除这个种子，避免过度绕路；
 - 新增地图修补只改 `map_patches.py`，不改 `agent.py` 的地图分支。
+- 低矮通道（蹲行狗洞）用 `MapPatch.crouch_gates` 描述；`agent.traverse_gate()` 会 `crouch=True` 直行通过并**禁止跳跃**，穿过后重新 A*。Mirage VIP `(75.3,66.2)` 的取证见 [11-13-mirage-vip-doghole.md](./11-13-mirage-vip-doghole.md)。
 
 ### 2.6 本地 nav 模拟
 

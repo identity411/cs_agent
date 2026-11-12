@@ -6,18 +6,39 @@ asks this module for an abstract patch and never branches on a map id.
 
 DEFAULT_STEP_JUMP_HEIGHT = 0.8
 DEFAULT_STEP_JUMP_RADIUS = 2.5
+DEFAULT_CROUCH_GATE_RADIUS = 2.4
+
+
+class CrouchGate:
+    """A low passage that must be crossed crouched, never jumped.
+
+    ``center``/``axis`` describe the through-line in world coordinates.
+    The agent triggers on the gate when the current goal is on the other
+    side of that line and it is inside ``radius``.
+    """
+
+    __slots__ = ("name", "center", "axis", "radius")
+
+    def __init__(self, name, center, axis, radius=DEFAULT_CROUCH_GATE_RADIUS):
+        self.name = name
+        self.center = tuple(float(value) for value in center)
+        self.axis = tuple(float(value) for value in axis)
+        self.radius = float(radius)
 
 
 class MapPatch:
     """Abstract per-map repair profile consumed by the agent core."""
 
-    __slots__ = ("hazards", "step_jump_height", "step_jump_radius")
+    __slots__ = ("hazards", "step_jump_height", "step_jump_radius",
+                 "crouch_gates")
 
     def __init__(self, hazards=(), step_jump_height=DEFAULT_STEP_JUMP_HEIGHT,
-                 step_jump_radius=DEFAULT_STEP_JUMP_RADIUS):
+                 step_jump_radius=DEFAULT_STEP_JUMP_RADIUS,
+                 crouch_gates=()):
         self.hazards = tuple(hazards)
         self.step_jump_height = float(step_jump_height)
         self.step_jump_radius = float(step_jump_radius)
+        self.crouch_gates = tuple(crouch_gates)
 
 
 EMPTY = MapPatch()
@@ -34,9 +55,20 @@ PATCHES = {
     # The direct A* branch goes past a low ledge; keep the soft penalty and
     # let the abstract step-jump in the agent handle the east detour ledge
     # around (74.6, 62.3).
-    "mirage-cs2-v54": MapPatch(hazards=(
-        (42.8, 66.4, 4.5),
-    )),
+    #
+    # The (75.3, 66.2) passage into VIP is a crouch-only "dog hole".  In
+    # account2 `dc5d2841` R12/R14/R15 the agent pressed south into it and
+    # jumped in place (z 15.7 <-> 17.2) for the rest of the round; jumping
+    # cannot clear a low ceiling.  Cross it crouched and suppress jumps.
+    "mirage-cs2-v54": MapPatch(
+        hazards=(
+            (42.8, 66.4, 4.5),
+        ),
+        crouch_gates=(
+            CrouchGate("vip_dog_hole", (75.3, 66.2, 15.83),
+                       (0.0, -1.0), 2.4),
+        ),
+    ),
 }
 
 

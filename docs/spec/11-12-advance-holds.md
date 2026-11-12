@@ -1,6 +1,6 @@
 # 规范：推进点（Advance Holds）——寻路之后的“跑—停—打—跑”与预瞄角
 
-Status: **2026-11-12 定义；未实现，v0.05 候选。样本为 1 场 / 24 回合（`da110811` 的 seat 3，网页 Seat 4），需下一场 nevaio 对局回填**
+Status: **2026-11-13 已实现并随 `1113-v0.07` 提交到 account2 version 6 并激活：`advance_holds.py` + `move(aim=…)` + CT anchor hold；§4.1–§4.4 的 nevaio 锚点已落地，CT A 锚点覆盖 dust2 / mirage / nevaio / borgo，molo 走 nav 通用回退。样本为 1 场 / 24 回合（`da110811` 的 seat 3，网页 Seat 4），仍需下一场正式对局回填**
 Date: 2026-11-12
 Related specs: [11-12-pathing-routes.md](./11-12-pathing-routes.md)（上游：A* / attackRoutes）· [11-12-match-observability.md](./11-12-match-observability.md)（验收口径）· [11-12-stuck-at-spawn.md](./11-12-stuck-at-spawn.md)（反例）· [11-12-site-center-hold.md](./11-12-site-center-hold.md)（到点后行为）· [maps.md](./maps.md)（nav / yaw 约定）· [agent-interface.md](./agent-interface.md)（动作字段）
 
@@ -215,7 +215,21 @@ yaw_rate = clip(angle(aim_dir - me["yaw"]) / 0.15)
 | `B` | site center | — | — | 先到 B/后点 |
 | `drill_entry` | (18.0,47.7,0) | **162.6°** | 约 -0.6° | B 口长线；参考 R18 停 68 s |
 
-### 4.6 道具配合（不是推进点的替代）
+### 4.6 实现覆盖（2026-11-13）
+
+`advance_holds.py` 已实现 §4.1–§4.4（4.5 之前）的 nevaio 数据，并把 CT A 锚点扩展到全部有样本的地图：
+
+| 地图 | T 推进 lane | CT A 锚点（stop → aim） | 说明 |
+| --- | --- | --- | --- |
+| `nevaio-r3-v54` | `A_long` / `A_mid` / `B_drill`（§4.1–4.3 实测值） | `(118,89.9,2.4)` → `(40,127,0)` | §4.4 实测；hold 不设上限，敌人出现才交火 |
+| `mirage-cs2-v54` | `A_main` / `B_main`（nav 采样 + A ramp 预瞄） | `(51.5,87.3,15.55)` → `(52,99,15.43)` | 守 A 时准星压 A 大/ramp，不转进箱子；进入 VIP 需蹲下，见 [11-13-mirage-vip-doghole.md](./11-13-mirage-vip-doghole.md) |
+| `dust2-cs2-v54` | 官方 `attackRoutes`（`A_long/A_split/B_long/B_split`） | `(164.9,120.9,22.5)` → `(131,140,20)` | 有官方 `watchA_CT` 时 patrol 优先；锚点用于无 patrol 的地图 |
+| `borgo-r3-v54` | `A_main` / `B_main`（nav 节点采样） | `(110,88,2.4)` → `(110,78,2.4)` | 守 A 时压 kiln/南侧入口 |
+| `molo-r3-v54` | 无样本 | 运行时 nav 回退 | 取离 site center 最近的节点为 stop，取离 CT spawn 最远的 site 邻居为 aim |
+
+所有 aim 的 `z` 表示该预瞄线所在层高；运行时自动加敌方头部高度 `1.64 m`，避免把准星压在地面上。
+
+### 4.7 道具配合（不是推进点的替代）
 
 参考对象在“不看的线”上丢道具：
 
@@ -225,17 +239,18 @@ yaw_rate = clip(angle(aim_dir - me["yaw"]) / 0.15)
 
 建议：推进点到达后，如果本回合还有对应投掷物且该线不是本点视线，按 `utility` 子类型丢一次；不要让道具占用推进时间。
 
-## 5. 与现有实现的接入点
+## 5. 与现有实现的接入点（2026-11-13 已实现）
 
-| 位置 | 改动 |
+| 位置 | 实现 |
 | --- | --- |
-| 新模块 `advance_holds.py` | `for_map(map_id)` 返回 `AdvanceMap`；数据表见 §4；未知地图返回空。 |
-| `Player.__init__` | 增加 `self.advance_lane`、`self.advance_index`、`self.hold_until`、`self.preaim`。 |
-| `load_map()` | 读取 `advance_holds.for_map(row.get("id"))`；校验 `static_schema_hash`；地图变化时与 `attackRoutes` 一起清空。 |
-| `route_lane_points()` | 保持官方 `attackRoutes` 优先级；没有官方 lane 时，从 `advance_holds` 取同一 `(side, site, name)` 的 lane。 |
-| `act()`（无敌人分支） | 在 `move()` 前选择当前推进点；到点且 `hold>0` 时返回 hold 动作（`move_forward=0, move_right=0, walk=False`，yaw/pitch 保持 aim）；hold 结束再 `move()`。 |
-| `move()` | 预瞄时把 yaw 目标从 path 方向改为 aim 方向；移动输入按 `delta = path_dir - me["yaw"]` 分解（§3.1）；`walk=not sprint` 改为默认 `walk=False`，只在 `walk_in`/hold 时 `walk=True`。 |
-| `combat()` | 见敌且 `speed > STOP_SPEED` 时先零移动输入、`fire=False`；速度达标后再进入现有对齐/开火。默认不蹲。 |
+| `advance_holds.py` | `for_map(map_id)` 返回 `AdvanceMap`；数据表见 §4；未知地图返回空。 |
+| `Player.__init__` / `load_map()` | 增加 `self.advance`、`advance_route_*`、`gate` 状态；按 `map_id` 加载数据，换图/换回合清空。 |
+| `route_lane_points()` | 保持官方 `attackRoutes` 优先级；没有官方 lane 时，`advance_lane_points()` 从 `advance_holds` 选 lane，并把 stop 点作为 `via`。 |
+| `act()`（无敌人分支） | CT 无官方 patrol 时选 anchor：goal = anchor.stop；到达 `STOP_RADIUS` 后 `hold_aim()` 零移动、准星锁 aim；T 在 lane 上取下一个点的 aim。 |
+| `move()` | 新增 `aim` 参数：移动向量仍沿 path，yaw/pitch 锁 aim；waypoint 在身后（|error|>2π/3）时暂停预瞄。 |
+| `combat()` | 本次未改；BRAKE（速度 > `STOP_SPEED` 时禁火）仍是下一步。 |
+
+注意：`walk` 默认值没有改成 `walk=False`（避免一次改动过大）；当前仍走 `walk=not sprint`。后续需要单独验证跑动速度/命中率。
 
 **为什么 `walk` 要改**：`move()` 目前是 `walk=not sprint`，非 sprint 段默认走路（约 1.8 m/s）；参考对象是 `walk=False` 的 5.5 m/s 默认跑。推进点数据再准，走路也会把 28–34 s 的到点时间拖到 60 s 以上。
 
@@ -247,7 +262,7 @@ yaw_rate = clip(angle(aim_dir - me["yaw"]) / 0.15)
 | --- | --- | --- |
 | `PREAIM_DISTANCE` | 20 m | 进入该距离后锁 aim；参考在 outpost 前已压 -30° |
 | `STOP_SPEED` | 1.0 m/s | 站定命中率 76.5% vs 跑动 17.5% |
-| `STOP_RADIUS` | 3.0 m | 现有 `WAYPOINT_RADIUS` 2.0 m 的略宽版本 |
+| `STOP_RADIUS` | 3.0 m（实现取 1.5 m） | anchor 要站准点位；1.5 m 避免在目标前 3 m 就停下 |
 | `HOLD_ADVANCE` | 0 s | 参考每个推进点打 1–7 发即走，不停留 |
 | `HOLD_CROSS` | 0.5–1 s（可选） | observation / front_ladder_top 这类交叉口；参考对象实际也是见敌才停 |
 | `HOLD_ANCHOR` | 5–10 s | 不要照抄 68–96 s |
@@ -306,9 +321,10 @@ python3 .claude/skills/agx-match-query/scripts/agx_matches.py events \
 
 待办：
 
-- [ ] 实现 `advance_holds.py` 与 nevaio 五条 lane 数据。
-- [ ] `move()` 默认 `walk=False`，预瞄 yaw 与移动方向解耦。
+- [x] 实现 `advance_holds.py` 与 §4.1–4.4 的 nevaio 数据；CT A 锚点覆盖 dust2/mirage/nevaio/borgo，molo 用 nav 回退。
+- [x] `move()` 预瞄 yaw 与移动方向解耦（`aim` 参数）。
+- [x] 单元测试：预瞄 yaw 符号、aim 头部高度、CT A hold 不移动、未知地图空数据。
+- [ ] `walk` 默认改为 `walk=False`，验证跑动到点时间。
 - [ ] `combat()` 增加 `STOP_SPEED` 刹停门。
-- [ ] 单元测试：预瞄 yaw 符号、A 平台俯角、hold 后继续、见敌刹停。
-- [ ] 下一场 nevaio 对局回填到点时间/跑动占比/站定命中率/卡死。
+- [ ] 下一场正式对局回填到点时间/跑动占比/站定命中率/卡死。
 - [ ] 评估 `bot_waypoints.attackRoutes` 与本地 lane 的优先级是否需要按地图配置。
