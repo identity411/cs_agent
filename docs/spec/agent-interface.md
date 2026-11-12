@@ -4,6 +4,13 @@
 >
 > 当前 `agent.py` 是旧 baseline，与本文的差异见 [`baseline-compatibility.md`](baseline-compatibility.md)；在实测首拍前不要假设它已完全适配。
 
+## 变更记录
+
+### 2026-11-12
+- **关联规范**：[maps.md](maps.md)、[baseline-compatibility.md](baseline-compatibility.md)、[agx-submit skill](../../.claude/skills/agx-submit/SKILL.md)。
+- **背景**：`agent.py` 从旧 starter 还原；线上 Python 合同为 `rsi-fps-5.5` / `python-agent-v1`，需要本地合法观测与动作参考。
+- **决策点**：按官方合同记录字段；不猜测缺失字段；以真实首拍、模板和准入回执验证；完整官方定义以外部指南为准。
+
 ## 生命周期
 
 提交 ZIP 的根目录必须有 `agent.py`。平台为十个席位分别加载独立策略实例（正式路径是十个独立常驻 P01 进程），入口：
@@ -188,6 +195,6 @@ def act(observation):
 ## 相关文档
 
 - [maps.md](maps.md) — 五图、选图、坐标与 `map` 结构
-- [fps54-catalogue.json](fps54-catalogue.json) — 冻结武器 / 装备 / 投掷物
 - [agx-submit skill](../../.claude/skills/agx-submit/SKILL.md) — 预算、打包、故障语义与 Python 上传
 - [baseline-compatibility.md](baseline-compatibility.md) — 当前 `agent.py` 的差异
+- 官方指南 — 完整武器 / 装备 / 投掷物数值与游戏规则（不落盘）

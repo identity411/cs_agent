@@ -14,6 +14,6 @@
 - 平台通用说明与投掷物完整机制以 AGX 官网 / 官方指南为准，不在本仓库重复。
 - 官方指南声明这是**闭门候选合同**，不表示赛事已开放；历史对局保留自己的合同。
 - [`spec/baseline-compatibility.md`](spec/baseline-compatibility.md) 记录当前 `agent.py` 与该合同的差异。修正前不要假设 baseline 可直接使用。
-- 2026-11-12：baseline 已作为 [`v001-first-python-submission`](submissions/v001-first-python-submission/README.md) 通过 Python 提交准入并激活版本 1；这不等于完整对局或得分成功。
+- 2026-11-12：baseline 已作为 [`1112-v0.01`](submissions/1112-v0.01/README.md) 通过 Python 提交准入并激活版本 1；这不等于完整对局或得分成功。
 
 `map.nav` 在完整五图 / 对局中的行为，以及正式对局验收仍待核实；见 [`spec/README.md`](spec/README.md) 的待补清单。

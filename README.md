@@ -40,5 +40,5 @@ def act(observation): ...
 
 ## 提交状态
 
-- 2026-11-12：`v001-first-python-submission` 通过 Python ZIP admission，版本 `1` 已激活。详见 [`docs/submissions/v001-first-python-submission/README.md`](docs/submissions/v001-first-python-submission/README.md)。
+- 2026-11-12：`1112-v0.01` 通过 Python ZIP admission，版本 `1` 已激活。详见 [`docs/submissions/1112-v0.01/README.md`](docs/submissions/1112-v0.01/README.md)。
 - 这只表示上传 / 准入 / 激活成功，不代表完整对局、比分或排名。

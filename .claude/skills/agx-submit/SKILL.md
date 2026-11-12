@@ -104,12 +104,11 @@ python3 .claude/skills/agx-submit/scripts/agx_submit.py submit \
 
 ### 4. Archive after success
 
-Create a new version under `docs/submissions/` (never mutate v000):
+Create a new version under `docs/submissions/` (never mutate existing snapshots). Directories use `MMDD-vX.YY`; baseline is `1112-v0.00`, the next submissions are `1112-v0.01`, `v0.02`, and so on:
 
 ```sh
 python3 .claude/skills/agx-submit/scripts/agx_submit.py archive \
-  --submission-dir . --label first-submission \
-  --notes "First submission of the baseline for pipeline validation."
+  --submission-dir . --notes-file /tmp/change-note.md
 ```
 
 Then:
@@ -134,4 +133,4 @@ Then:
 - API key: account-scoped, one-time display; never put it in code, docs, logs, or the ZIP.
 - The account guide's JSON `source` upload path is for the QuickJS games (tank/poker); FPS is Python and uses the ZIP bundle flow.
 - The `/api/v1/python-submissions` routes are **not in** `/api/openapi.json`; the verified routes are listed above. Do not substitute the JS `source` upload path.
-- First verified submission: `v001-first-python-submission` — admission `passed`, version `1` activated. See `docs/submissions/v001-first-python-submission/README.md`.
+- First verified submission: `1112-v0.01` — admission `passed`, version `1` activated. See `docs/submissions/1112-v0.01/README.md`.

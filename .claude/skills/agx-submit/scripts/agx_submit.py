@@ -614,20 +614,34 @@ def cmd_archive(args) -> int:
     base = repo_root / "docs" / "submissions"
     base.mkdir(parents=True, exist_ok=True)
 
-    existing = []
+    existing: list[tuple[int, int]] = []
     for path in base.iterdir():
-        match = re.match(r"v(\d+)-", path.name)
+        match = re.match(r"\d{4}-v(\d+)\.(\d+)", path.name)
         if match and path.is_dir():
-            existing.append(int(match.group(1)))
+            existing.append((int(match.group(1)), int(match.group(2))))
     if args.version:
-        number = int(args.version)
+        raw = args.version.strip().lower()
+        if raw.startswith("v"):
+            raw = raw[1:]
+        try:
+            major_s, minor_s = raw.split(".", 1)
+            major, minor = int(major_s), int(minor_s)
+        except (ValueError, AttributeError):
+            die("--version must look like v0.02")
     else:
-        number = max(existing, default=0) + 1
-    label = slugify(args.label)
-    version = f"v{number:03d}-{label}"
-    target = base / version
+        if existing:
+            major, minor = max(existing)
+            minor += 1
+        else:
+            major, minor = 0, 1
+    version = f"v{major}.{minor:02d}"
+    date_prefix = args.date or datetime.now().strftime("%m%d")
+    if not re.fullmatch(r"\d{4}", date_prefix):
+        die("--date must be MMDD (for example 1112)")
+    folder = f"{date_prefix}-{version}"
+    target = base / folder
     if target.exists():
-        die(f"{target} already exists; use a new label/version or inspect it first")
+        die(f"{target} already exists; choose a new --version or inspect it first")
 
     notes = args.notes
     if args.notes_file:
@@ -647,7 +661,7 @@ def cmd_archive(args) -> int:
     if args.api_result:
         api_result = json.loads(Path(args.api_result).read_text())
     metadata = {
-        "version": version,
+        "version": folder,
         "date": utc_date(),
         "competition_id": args.competition_id,
         "contract": args.contract,
@@ -661,7 +675,7 @@ def cmd_archive(args) -> int:
     (target / "metadata.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2) + "\n"
     )
-    readme = f"""# {version}
+    readme = f"""# {folder}
 
 - **日期**：{utc_date()}
 - **比赛 ID**：`{args.competition_id}`
@@ -685,7 +699,7 @@ TODO: 在受影响的 `docs/spec/*.md` 中加入本版本引用，并在
     (target / "README.md").write_text(readme)
     print(json.dumps({
         "created": str(target),
-        "version": version,
+        "version": folder,
         "files": file_hashes,
         "next": "add the version to docs/spec/README.md and backlink from the affected spec",
     }, ensure_ascii=False, indent=2))
@@ -720,14 +734,14 @@ def make_parser() -> argparse.ArgumentParser:
     submit.add_argument("--yes", action="store_true")
     submit.set_defaults(func=cmd_submit)
 
-    archive = sub.add_parser("archive", help="create a docs/submissions/vNNN snapshot")
+    archive = sub.add_parser("archive", help="create a docs/submissions/MMDD-vX.YY snapshot")
     archive.add_argument("--repo-root", default=".")
     archive.add_argument("--submission-dir", default=".")
     archive.add_argument("--include", action="append", default=[])
-    archive.add_argument("--label", required=True)
     archive.add_argument("--notes", default="")
     archive.add_argument("--notes-file")
-    archive.add_argument("--version")
+    archive.add_argument("--version", help="optional next version, e.g. v0.02")
+    archive.add_argument("--date", help="optional MMDD prefix; defaults to today")
     archive.add_argument("--competition-id", default=os.environ.get("RSI_COMPETITION_ID", DEFAULT_COMPETITION_ID))
     archive.add_argument("--contract", default="unknown")
     archive.add_argument("--status", default="submitted")

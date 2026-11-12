@@ -1,4 +1,4 @@
-# v000 — baseline
+# 1112-v0.00 — baseline
 
 - **日期**：2026-11-12
 - **源码提交**：`57fb246`（"Add rule-based baseline FPS agent"）
@@ -22,4 +22,4 @@
 
 ## 后续
 
-下一次提交前，先按 `baseline-compatibility.md` 的优先级修正，并在 `docs/submissions/` 新增 `vNNN-<label>/` 快照与改动说明。
+下一次提交前，先按 `baseline-compatibility.md` 的优先级修正，并在 `docs/submissions/` 新增 `MMDD-vX.YY/` 快照与改动说明。

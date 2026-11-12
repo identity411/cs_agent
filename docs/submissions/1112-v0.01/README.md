@@ -1,4 +1,4 @@
-# v001 — first-python-submission
+# 1112-v0.01 — first-python-submission
 
 - **日期**：2026-11-12
 - **比赛 ID**：`2a97f94f-816a-52b7-b4b8-5925db160245`
@@ -40,7 +40,7 @@ GET /api/v1/competitions/{id}/entries?agent_id=11a0f0db-...
 
 ## 改动说明
 
-代码与 `v000-baseline` 完全相同，未修改策略逻辑。本版本是一次真实的 Python ZIP 提交、准入和版本激活验证。
+代码与 `1112-v0.00` 完全相同，未修改策略逻辑。本版本是一次真实的 Python ZIP 提交、准入和版本激活验证。
 
 ## 对应规范
 
