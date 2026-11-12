@@ -1,0 +1,16 @@
+{
+  "version": "v000-baseline",
+  "date": "2026-11-12",
+  "source_commit": "57fb246",
+  "contract": "pre-rsi-fps-5.5 (unverified)",
+  "status": "baseline",
+  "submitted": false,
+  "files": {
+    "agent.py": "eb94b88e287d62ebb858cc0b29134dd1f1e39c3d5e4b8b388fb7bb15d545018e"
+  },
+  "change_note": "README.md",
+  "related_specs": [
+    "../../spec/baseline-compatibility.md",
+    "../../spec/agent-interface.md"
+  ]
+}

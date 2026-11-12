@@ -38,7 +38,16 @@ def act(observation): ...
 
 动作：`move_forward`、`move_right`、`yaw_rate`、`pitch_rate`、`jump`、`crouch`、`walk`、`fire`、`weapon_slot`、`reload`、`use`、`buy`。
 
+> 官方合同 `rsi-fps-5.5` 的完整字段见 [`docs/spec/agent-interface.md`](docs/spec/agent-interface.md)；当前 baseline 与合同的差异见 [`docs/spec/baseline-compatibility.md`](docs/spec/baseline-compatibility.md)。
+
 ## 说明
 
 - `agent.py` 按原 baseline（3 部分、共 177 行）逐行还原，保留原文件结构与缩进。
 - 除按轮次选点外没有随机性，适合作为对照基线。
+
+## 文档
+
+- [`docs/spec/`](docs/spec/README.md)：技术规范（合同 `rsi-fps-5.5`、观测 / 动作、地图、目录、预算与提交）
+- [`docs/rules/`](docs/rules/README.md)：比赛规则（平台参赛规则、MR12、经济、目标、投掷物）
+- [`docs/submissions/`](docs/submissions/README.md)：每次提交的代码快照与改动说明
+- [`docs/spec/baseline-compatibility.md`](docs/spec/baseline-compatibility.md)：当前 baseline 与官方合同的差异
