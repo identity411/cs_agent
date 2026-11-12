@@ -2,6 +2,16 @@
 import math
 from collections import deque
 
+# Navigation tolerances.  The waypoint radius is deliberately larger than
+# 1 m: a 1 m radius makes the agent turn back to a node it has just passed
+# when the engine's collision shape stops it a little short.
+WAYPOINT_RADIUS = 2.0
+BEHIND_RADIUS = 4.0
+TURN_IN_PLACE = 1.2
+STUCK_AFTER = 20
+STUCK_SKIP = 80
+NO_PROGRESS_AFTER = 60
+
 
 def clip(value):
     return max(-1.0, min(1.0, value))
@@ -21,6 +31,8 @@ class Player:
         self.path, self.goal = [], None
         self.round = None
         self.last_position, self.stuck = None, 0
+        self.blocked = set()
+        self.wp_point, self.wp_best, self.wp_ticks = None, None, 0
 
     def load_map(self, row):
         self.sites = row["sites"]
@@ -32,14 +44,35 @@ class Player:
                 self.edges[edge["from"]].append(edge["to"])
             if edge["kind"] == "walk":
                 self.edges[edge["to"]].append(edge["from"])
+        # A new map payload invalidates every route from the previous map.
+        self.path, self.goal = [], None
+        self.blocked.clear()
+        self._reset_waypoint_progress()
+
+    def _reset_waypoint_progress(self):
+        self.wp_point, self.wp_best, self.wp_ticks = None, None, 0
+
+    def _advance_waypoint(self):
+        """Skip a waypoint that cannot be reached; keep the rest of the path."""
+        if len(self.path) > 1:
+            self.blocked.add(tuple(self.path.pop(0)))
+        else:
+            self.path = []
+        self.stuck = 0
+        self._reset_waypoint_progress()
+
+    def nearest_node(self, pos):
+        keys = [key for key in self.nodes
+                if tuple(self.nodes[key]) not in self.blocked]
+        if not keys:
+            keys = list(self.nodes)
+        return min(keys, key=lambda key: distance(pos, self.nodes[key]))
 
     def route(self, start, goal):
         if not self.nodes:
             return [goal]
-        first = min(self.nodes,
-                    key=lambda k: distance(start, self.nodes[k]))
-        last = min(self.nodes,
-                   key=lambda k: distance(goal, self.nodes[k]))
+        first = self.nearest_node(start)
+        last = self.nearest_node(goal)
         queue, parent = deque([first]), {first: None}
         while queue and last not in parent:
             here = queue.popleft()
@@ -53,7 +86,13 @@ class Player:
         while cursor is not None:
             path.append(self.nodes[cursor])
             cursor = parent[cursor]
-        return list(reversed(path))
+        path = list(reversed(path))
+        if self.blocked:
+            # Do not route through a corner that has already trapped the
+            # agent; a direct goal fallback is better than looping.
+            path = [point for point in path
+                    if tuple(point) not in self.blocked] or [goal]
+        return path
 
     def buy(self, o):
         m = o["me"]
@@ -98,30 +137,78 @@ class Player:
     def move(self, o, goal, action):
         m = o["me"]
         pos = [m["x"], m["y"], m["z"]]
-        if self.goal != goal or not self.path:
+        if self.goal != goal:
+            self.path = []
+            self.blocked.clear()
+            self._reset_waypoint_progress()
+        if not self.path:
             self.path, self.goal = self.route(pos, goal), list(goal)
-        while (len(self.path) > 1
-               and distance(pos, self.path[0]) < 1.0):
-            self.path.pop(0)
+            self._reset_waypoint_progress()
+        # Drop waypoints that are already reached, blocked, or behind the
+        # next waypoint.  The old 1 m test let the agent turn back to a node
+        # it had just passed and then press into its collision shape.
+        while len(self.path) > 1:
+            point = self.path[0]
+            if tuple(point) in self.blocked:
+                self.path.pop(0)
+                self._reset_waypoint_progress()
+                continue
+            d = distance(pos, point)
+            if d < WAYPOINT_RADIUS:
+                self.path.pop(0)
+                self._reset_waypoint_progress()
+                continue
+            nxt = self.path[1]
+            ahead = ((point[0]-pos[0]) * (nxt[0]-pos[0])
+                     + (point[1]-pos[1]) * (nxt[1]-pos[1]))
+            if ahead < 0 and d < BEHIND_RADIUS:
+                self.path.pop(0)
+                self._reset_waypoint_progress()
+                continue
+            break
         point = self.path[0]
         dx, dy = point[0]-pos[0], point[1]-pos[1]
-        yaw = angle(math.atan2(-dy, dx) - m["yaw"])
+        error = angle(math.atan2(-dy, dx) - m["yaw"])
+        d = distance(pos, point)
+        if self.wp_point != tuple(point):
+            self.wp_point, self.wp_best, self.wp_ticks = tuple(point), d, 0
+        elif d < self.wp_best - 0.1:
+            self.wp_best, self.wp_ticks = d, 0
+        else:
+            self.wp_ticks += 1
+
+        # Do not walk backwards while turning.  A large heading error means
+        # the target is behind; turn in place, then move.
+        forward = 0.75 * math.cos(error)
+        if abs(error) > TURN_IN_PLACE:
+            forward = 0.0
+        strafe = -0.75 * math.sin(error)
+        moving = abs(forward) > 0.1 or abs(strafe) > 0.2
         moved = (self.last_position is None
                  or distance(pos, self.last_position) > 0.01)
-        self.stuck = 0 if moved else self.stuck + 1
+        if abs(error) > TURN_IN_PLACE:
+            # Turning in place is intentional; do not fire the unstick
+            # recovery and interrupt the turn.
+            self.stuck = 0
+        elif moved or not moving:
+            self.stuck = 0
+        else:
+            self.stuck += 1
         self.last_position = pos
-        action.update(move_forward=0.75 * math.cos(yaw),
-                      move_right=-0.75 * math.sin(yaw),
-                      yaw_rate=clip(yaw / 0.15),
+        action.update(move_forward=forward,
+                      move_right=strafe,
+                      yaw_rate=clip(error / 0.15),
                       pitch_rate=clip(-m["pitch"] / 0.1), walk=True)
-        if self.stuck > 20:
-            # A public graph edge may be blocked; try to recover.
+        if self.stuck > STUCK_AFTER:
+            # A public graph edge may be blocked; back off and strafe.
             side = 0.7 if (o["match_tick"] // 30) % 2 else -0.7
             jump = bool(m["grounded"] and self.stuck % 12 == 0)
-            action.update(move_forward=-0.2,
-                          move_right=side, jump=jump)
-            if self.stuck > 80:
-                self.path, self.stuck = [], 0
+            action.update(move_forward=-0.2, move_right=side,
+                          yaw_rate=0.0, jump=jump)
+        if self.stuck > STUCK_SKIP or self.wp_ticks > NO_PROGRESS_AFTER:
+            # Re-route from the next waypoint instead of clearing the path
+            # and picking the same nearest node again.
+            self._advance_waypoint()
         return action
 
     def act(self, o):
@@ -131,6 +218,8 @@ class Player:
             self.round = o["round_index"]
             self.path, self.goal = [], None
             self.last_position, self.stuck = None, 0
+            self.blocked.clear()
+            self._reset_waypoint_progress()
         m = o["me"]
         if not m["alive"] or o["phase"] not in ("buy", "live"):
             return {}
