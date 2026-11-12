@@ -1,6 +1,6 @@
 # Badcase：v0.01 对局的 5 类非卡住问题（经济 / 转点 / 走路 / 蹲射 / 换弹）
 
-Status: **2026-11-12 对局已确认（match `da110811-9f35-4c86-9492-b322b1302391`，seat 7，v0.01）；5 类均未修复；v0.02 只改了导航/卡住，未覆盖本文**
+Status: **2026-11-12 对局已确认（match `da110811-9f35-4c86-9492-b322b1302391`，seat 7，v0.01）；5 类均未修复；v0.02 只改了导航/卡住。v0.02 回填：回防启动 33.3%→100%，到位仍 0%；交火参与未改善、命中率暂定下降，见 [11-12-match-observability.md](./11-12-match-observability.md)**
 Date: 2026-11-12
 Related specs: [11-12-stuck-at-spawn.md](./11-12-stuck-at-spawn.md)（出生点/近点卡住；本文不重复其根因）· [11-12-empty-primary-switch-reload.md](./11-12-empty-primary-switch-reload.md)（空弹主武器不切枪；本文只补充“不主动补弹”）· [agent-interface.md](./agent-interface.md)（`me.weapons`、`cash`、`armor` / `helmet`、动作字段）· [maps.md](./maps.md)（nevaio 的 A/B 点与导航图）· [baseline-compatibility.md](./baseline-compatibility.md)（baseline 的已知差异）· [agx-match-query skill](../../.claude/skills/agx-match-query/SKILL.md)（对局/公开回放取证）
 

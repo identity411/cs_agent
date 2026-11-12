@@ -42,3 +42,11 @@
 - 已验证（本地）：`python3 -m unittest discover -s tests -v` 4/4；用 2026-11-12 R7 公开回放帧验证修复版第一拍从 `path[0]=ct` 变为 `path[0]=rear_corner`。
 - **未验证**：新版本在 12:00–14:00 UTC 下一轮的完整对局、比分、回放与长期排名；admission 通过不代表完整对局成功。
 - 已知未修：空弹主武器不切枪 / `reload_until` 语义等，仍见 `baseline-compatibility.md` 与空弹 badcase。
+
+## 赛后回填（2026-11-12 12:00 UTC）
+
+- `main`（seat 3，`dust2-cs2-v54`）：13–8 胜；公开事件中全场 10 人合计 **0 个 `fire`**、0 命中、0 击杀，21 回合中 20 回合 timeout；仅 R20 下包 B 后爆炸。该场为 `lobby_zero_combat` 异常对局，**不能用于交火/命中结论**，但可用于移动/卡死观测：防守 12/12 到点，进攻 4/9 到点，R13/R14/R15/R17/R19 在 T 侧出生点附近卡死。
+- **公开帧复现（2026-11-12）**：对手队 team 1 的 seats 5–9 在 R0/R1（T）与 R13（CT）两侧均不购买（cash 保持 800 / 4050、armor 0）、`speed=0`、`idle`、不移动；我方 seats 1/2/3 购买并移动，seat 0 fault、seat 4 idle。全场 0 交火主要是**对手队全队 inactive**，不是全局地图或我方移动代码冻结；该场也不能用于我方交火/命中结论。
+- `account2`（seat 1，`borgo-r3-v54`）：13–6 胜；143 发 / 23 中（16.1%）/ 7 kill / 5 death；到点 14/19，回防启动 4/4、到位 0/4。
+- 与 v0.01 的指标对比、判定门槛和逐回合证据见 [`docs/spec/11-12-match-observability.md`](../../spec/11-12-match-observability.md)。结论为混合：卡死/到点明显改善，交火参与未改善，命中率暂定下降，回防只改善启动、未改善到位。
+- **仍未验证**：更多正常交火对局、长期排名；dust2 T 侧卡死是新发现的残留问题。

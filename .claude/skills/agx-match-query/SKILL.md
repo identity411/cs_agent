@@ -1,6 +1,6 @@
 ---
 name: agx-match-query
-description: Read-only AGX FPS match and public-replay query skill. Use to find the user's latest match, report round/standing/result, inspect public replay events and frames for a seat, and check movement/empty-primary badcases. Reuses the agx-submit credentials; never uploads or activates anything.
+description: Read-only AGX FPS match and public-replay query skill. Use to find the user's latest match, report round/standing/result, inspect public replay events and frames for a seat, check movement/empty-primary badcases, and compute per-version observability metrics (participation, accuracy, site reach, rotation). Reuses the agx-submit credentials; never uploads or activates anything.
 ---
 
 # AGX match query
@@ -39,8 +39,9 @@ them. Only contact the explicitly configured URL.
 
 ## Commands
 
-All commands are under
-`.claude/skills/agx-match-query/scripts/agx_matches.py`.
+Match commands are under
+`.claude/skills/agx-match-query/scripts/agx_matches.py`.  The aggregate
+observability script is `agx_observe.py` (see below).
 
 ```sh
 # What has my account got? Current/next round, my standing.
@@ -93,6 +94,18 @@ python3 .claude/skills/agx-match-query/scripts/agx_matches.py collect \
   --game-id racing --replays
 # A named account's default competition comes from
 # RSI_ACCOUNT_<NAME>_COMPETITION_ID; --game-id overrides it.
+
+# Aggregate observability metrics for collected matches (read-only).
+# Requires `collect --replays` first.  Movement metrics sample public frames
+# at 2 s; use --no-frames for event-only combat/accuracy metrics.
+python3 .claude/skills/agx-match-query/scripts/agx_observe.py \
+  --match main:36cf9b6c-78ec-469f-b008-daca03bf0e73:v0.02-main \
+  --match main:da110811-9f35-4c86-9492-b322b1302391:v0.01 \
+  --out data/analysis/2026-11-12-observability.json
+# The summary always includes a per-map / per-side line such as
+#   dust2-cs2-v54 v0.02-main attack reach=4/9 stuck=5/9 | defend reach=12/12 ...
+# JSON also contains top-level `by_map`.  Use the same `:LABEL` on multiple
+# matches to get one pooled `aggregate` entry for that code version.
 ```
 
 `report`, `frames`, `events`, and `collect` accept `--json` for
@@ -195,6 +208,12 @@ is one JSON object with the map (`sites`, `nav`, `spawns`, `plant_zones`,
   never uploads, activates, or changes competition state, and never writes a
   key into a snapshot. `--agent-id` / `--seat` selectors are single-account
   only.
+- `agx_observe.py` writes only the requested `--out` JSON and reads public
+  frames; it never uploads or activates.  A match whose `lobby_fires` is 0 is
+  marked `lobby_zero_combat`: do not use it for combat/accuracy/rotation
+  conclusions, even though movement/site metrics remain observable.
+- Metrics and verdict rules are defined in
+  [11-12-match-observability.md](../../../docs/spec/11-12-match-observability.md).
 - Related badcases:
   [11-12-empty-primary-switch-reload.md](../../../docs/spec/11-12-empty-primary-switch-reload.md)
   and

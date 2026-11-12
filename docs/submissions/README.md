@@ -15,3 +15,4 @@
 | `1112-v0.00` | 2026-11-12 | baseline，未提交 | [README](1112-v0.00/README.md) |
 | `1112-v0.01` | 2026-11-12 | 已提交；admission passed；version 1 | [README](1112-v0.01/README.md) |
 | `1112-v0.02` | 2026-11-12 | 已提交；admission passed；version 2（出生点卡住修复） | [README](1112-v0.02/README.md) |
+| `1112-v0.03` | 2026-11-12 | 已提交；admission passed；main v3 / account2 v2（A* / attackRoutes / patrol / 战斗控制） | [README](1112-v0.03/README.md) |

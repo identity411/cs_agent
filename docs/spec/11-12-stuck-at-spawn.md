@@ -1,6 +1,6 @@
 # Badcase：出生点/近点卡住导致整回合不交战
 
-Status: **2026-11-12 对局已确认；修复已提交为 `1112-v0.02` / version 2，待新对局验证**
+Status: **2026-11-12 对局已确认；修复已提交为 `1112-v0.02` / version 2。v0.02 回填：防守侧到点 19/19、真卡死降到 12.5%；但 dust2 T 侧仍有 5 回合卡死，见 [11-12-match-observability.md](./11-12-match-observability.md)。v0.03 已加入 A* / dust2 attackRoutes / patrol，待新对局回填**
 Date: 2026-11-12
 Related specs: [11-12-empty-primary-switch-reload.md](./11-12-empty-primary-switch-reload.md)（空弹切枪；本场 A/C 未出现）· [maps.md](./maps.md)（nav 来源不证明可通行）· [baseline-compatibility.md](./baseline-compatibility.md)（地图/卡住恢复）· [agx-submit skill](../../.claude/skills/agx-submit/SKILL.md)（提交与回放来源）
 

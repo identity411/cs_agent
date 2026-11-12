@@ -1,6 +1,6 @@
 """Rule-based player: public map, combat and bomb objectives."""
+import heapq
 import math
-from collections import deque
 
 # Navigation tolerances.  The waypoint radius is deliberately larger than
 # 1 m: a 1 m radius makes the agent turn back to a node it has just passed
@@ -11,6 +11,33 @@ TURN_IN_PLACE = 1.2
 STUCK_AFTER = 20
 STUCK_SKIP = 80
 NO_PROGRESS_AFTER = 60
+
+# Traversal feedback.  A nav edge is not proof that the collision world lets
+# the agent through; penalize edges that repeatedly trap it, and decay the
+# penalty when the edge is traversed successfully.
+EDGE_PENALTY_STEP = 4.0
+EDGE_PENALTY_DECAY = 0.8
+EDGE_PENALTY_MAX = 8.0
+REVERSE_EDGE_PENALTY = 1.5
+# Soft hazards learned from real replays.  v0.02 seat 3 oscillated at
+# (83.4, 88.2) on T side and at (160.63, 125.71) on the CT approach to A;
+# seed those incident edges with a high penalty until the collision mesh can
+# be tested locally.
+MAP_HAZARDS = {
+    "dust2-cs2-v54": [(83.4, 88.2, 3.0), (160.63, 125.71, 3.0)],
+    "mirage-cs2-v54": [(42.8, 66.4, 4.5)],
+}
+# Source adjacency is directional and may encode drops/one-way ledges.  Do not
+# synthesize reverse edges until they are verified in the collision world.
+USE_REVERSE_SOURCE_EDGES = False
+
+# Movement / combat tuning.
+SPRINT_DISTANCE = 20.0
+STAMINA_MIN = 0.2
+PATROL_NEAR_SITE_PAD = 12.0
+COMBAT_TIMEOUT_TICKS = 90      # match ticks (~1.5 s) without fire
+COMBAT_COOLDOWN_TICKS = 60     # move-only window after a stalled combat
+COMBAT_STRAFE = 0.35
 
 
 def clip(value):
@@ -33,31 +60,119 @@ class Player:
         self.last_position, self.stuck = None, 0
         self.blocked = set()
         self.wp_point, self.wp_best, self.wp_ticks = None, None, 0
+        self.waypoints = {}
+        self.plant_zones = {}
+        self.plant_points = {}
+        self.attack_routes = {}
+        self.patrol_site, self.patrol_index = None, 0
+        self.patrol_last_pos, self.patrol_still = None, 0
+        self.path_ids = []
+        self.wp_from_id = None
+        self.via_key = None
+        self.edge_penalty = {}
+        self.reverse_edges = set()
+        self.attack_route_round = None
+        self.attack_route_site = None
+        self.attack_route_name = None
+        self.attack_route_points = []
+        self.carrier_site = None
+        self.carrier_site_round = None
+        self.combat_start_tick = None
+        self.combat_last_fire_tick = None
+        self.combat_cooldown_until = 0
 
     def load_map(self, row):
         self.sites = row["sites"]
         self.nodes = {n["id"]: n["position"]
                       for n in row["nav"]["nodes"]}
         self.edges = {key: [] for key in self.nodes}
+        self.reverse_edges.clear()
+        original = {
+            (edge["from"], edge["to"])
+            for edge in row["nav"]["edges"]
+            if edge["kind"] != "ladder"
+        }
         for edge in row["nav"]["edges"]:
-            if edge["kind"] != "ladder":
-                self.edges[edge["from"]].append(edge["to"])
-            if edge["kind"] == "walk":
-                self.edges[edge["to"]].append(edge["from"])
+            kind = edge["kind"]
+            if kind == "ladder":
+                continue
+            here, there = edge["from"], edge["to"]
+            self.edges[here].append(there)
+            if kind == "walk":
+                self.edges[there].append(here)
+            elif (USE_REVERSE_SOURCE_EDGES
+                  and kind == "source-adjacency"
+                  and (there, here) not in original):
+                # Opt-in only: a reverse edge can encode a climb that the
+                # collision world does not support.
+                self.edges[there].append(here)
+                self.reverse_edges.add((there, here))
+        self.waypoints = row.get("bot_waypoints") or {}
+        self.plant_zones = row.get("plant_zones") or {}
+        self.plant_points = {}
+        self.attack_routes = (
+            self.waypoints.get("attackRoutes") or {})
         # A new map payload invalidates every route from the previous map.
-        self.path, self.goal = [], None
+        self.path, self.path_ids, self.goal = [], [], None
+        self.via_key = None
+        self.wp_from_id = None
         self.blocked.clear()
+        self.edge_penalty.clear()
+        for hazard_x, hazard_y, hazard_radius in MAP_HAZARDS.get(
+                row.get("id"), ()):
+            for node_id, point in self.nodes.items():
+                if math.hypot(point[0] - hazard_x,
+                              point[1] - hazard_y) > hazard_radius:
+                    continue
+                for neighbor in self.edges.get(node_id, ()):
+                    self.edge_penalty[(node_id, neighbor)] = EDGE_PENALTY_MAX
+                for source, neighbors in self.edges.items():
+                    if node_id in neighbors:
+                        self.edge_penalty[(source, node_id)] = (
+                            EDGE_PENALTY_MAX)
+        self.patrol_site, self.patrol_index = None, 0
+        self.patrol_last_pos, self.patrol_still = None, 0
+        self.attack_route_round = None
+        self.attack_route_site = None
+        self.attack_route_name = None
+        self.attack_route_points = []
+        self.carrier_site = None
+        self.carrier_site_round = None
+        self.combat_start_tick = None
+        self.combat_last_fire_tick = None
+        self.combat_cooldown_until = 0
         self._reset_waypoint_progress()
 
     def _reset_waypoint_progress(self):
         self.wp_point, self.wp_best, self.wp_ticks = None, None, 0
 
+    def _penalize_edge(self, here, there):
+        """Remember that an edge trapped the agent; cap the penalty."""
+        if here is None or there is None:
+            return
+        key = (here, there)
+        self.edge_penalty[key] = min(
+            EDGE_PENALTY_MAX,
+            self.edge_penalty.get(key, 0.0) + EDGE_PENALTY_STEP)
+
+    def _decay_edge(self, here, there):
+        if here is None or there is None:
+            return
+        key = (here, there)
+        if key in self.edge_penalty:
+            self.edge_penalty[key] *= EDGE_PENALTY_DECAY
+
     def _advance_waypoint(self):
         """Skip a waypoint that cannot be reached; keep the rest of the path."""
+        current_id = self.path_ids[0] if self.path_ids else None
+        self._penalize_edge(self.wp_from_id, current_id)
         if len(self.path) > 1:
             self.blocked.add(tuple(self.path.pop(0)))
+            if self.path_ids:
+                self.wp_from_id = self.path_ids.pop(0)
         else:
-            self.path = []
+            self.path, self.path_ids = [], []
+            self.wp_from_id = None
         self.stuck = 0
         self._reset_waypoint_progress()
 
@@ -68,31 +183,302 @@ class Player:
             keys = list(self.nodes)
         return min(keys, key=lambda key: distance(pos, self.nodes[key]))
 
-    def route(self, start, goal):
+    def _astar(self, start, goal):
+        """A* on the public nav graph.
+
+        Edge weights are Euclidean lengths, so a path with fewer hops is no
+        longer automatically preferred.  Stuck edges get a learned penalty.
+        Returns (positions, node_ids); the exact goal is appended.
+        """
         if not self.nodes:
-            return [goal]
+            return [list(goal)], [None]
         first = self.nearest_node(start)
         last = self.nearest_node(goal)
-        queue, parent = deque([first]), {first: None}
-        while queue and last not in parent:
-            here = queue.popleft()
-            for there in self.edges[here]:
-                if there not in parent:
-                    parent[there] = here
-                    queue.append(there)
+        blocked_ids = {
+            node_id for node_id, point in self.nodes.items()
+            if tuple(point) in self.blocked
+        }
+        if last in blocked_ids:
+            return [list(goal)], [None]
+        open_heap = [(distance(self.nodes[first], goal), 0.0, first)]
+        g_score = {first: 0.0}
+        parent = {first: None}
+        closed = set()
+        while open_heap:
+            _estimate, cost, here = heapq.heappop(open_heap)
+            if here == last:
+                break
+            if here in closed:
+                continue
+            closed.add(here)
+            for there in self.edges.get(here, ()):
+                if there in blocked_ids:
+                    continue
+                step = distance(self.nodes[here], self.nodes[there])
+                penalty = self.edge_penalty.get((here, there), 0.0)
+                if (here, there) in self.reverse_edges:
+                    penalty += REVERSE_EDGE_PENALTY
+                new_cost = cost + step * (1.0 + penalty)
+                if new_cost >= g_score.get(there, float("inf")):
+                    continue
+                g_score[there] = new_cost
+                parent[there] = here
+                heapq.heappush(
+                    open_heap,
+                    (new_cost + distance(self.nodes[there], goal),
+                     new_cost, there))
         if last not in parent:
-            return [goal]
-        path, cursor = [goal], last
+            return [list(goal)], [None]
+        node_ids = []
+        cursor = last
         while cursor is not None:
-            path.append(self.nodes[cursor])
+            node_ids.append(cursor)
             cursor = parent[cursor]
-        path = list(reversed(path))
+        node_ids.reverse()
+        path = [list(self.nodes[node_id]) for node_id in node_ids]
+        path.append(list(goal))
+        node_ids.append(None)
+        return path, node_ids
+
+    def route(self, start, goal, via=None):
+        """Plan through optional lane points, then to the exact goal."""
+        if not self.nodes:
+            return [list(goal)], [None]
+        targets = list(via or []) + [goal]
+        full_path, full_ids = [], []
+        current = start
+        for target in targets:
+            path, node_ids = self._astar(current, target)
+            if not path:
+                return [list(goal)], [None]
+            if (full_path and path
+                    and distance(full_path[-1], path[0]) < 1e-6):
+                path = path[1:]
+                node_ids = node_ids[1:]
+            full_path.extend(path)
+            full_ids.extend(node_ids)
+            current = target
         if self.blocked:
-            # Do not route through a corner that has already trapped the
-            # agent; a direct goal fallback is better than looping.
-            path = [point for point in path
-                    if tuple(point) not in self.blocked] or [goal]
-        return path
+            filtered = [
+                (point, node_id)
+                for point, node_id in zip(full_path, full_ids)
+                if tuple(point) not in self.blocked
+            ]
+            if filtered:
+                full_path = [point for point, _ in filtered]
+                full_ids = [node_id for _, node_id in filtered]
+            else:
+                return [list(goal)], [None]
+        return full_path, full_ids
+
+    def _as_point(self, raw, site=None):
+        if not isinstance(raw, (list, tuple)) or len(raw) < 2:
+            return None
+        if all(isinstance(value, (int, float)) for value in raw[:3]):
+            z = (raw[2] if len(raw) > 2
+                 else (site["center"][2] if site else 0.0))
+            return [float(raw[0]), float(raw[1]), float(z)]
+        for value in raw:
+            point = self._as_point(value, site)
+            if point is not None:
+                return point
+        return None
+
+    def _as_points(self, raw, site=None):
+        if not isinstance(raw, (list, tuple)) or not raw:
+            return []
+        if all(isinstance(value, (int, float)) for value in raw[:3]):
+            point = self._as_point(raw, site)
+            return [point] if point is not None else []
+        points = []
+        for value in raw:
+            point = self._as_point(value, site)
+            if point is not None:
+                points.append(point)
+        return points
+
+    def waypoint_point(self, key, site=None):
+        if site is not None and key == site.get("id"):
+            return list(site["center"])
+        return self._as_point(self.waypoints.get(key), site)
+
+    def watch_point(self, site_id, side, near):
+        """Post-plant / hold point nearest to the bomb or agent."""
+        suffix = "_CT" if side == "defend" else "_T"
+        for key in ("watch" + str(site_id) + suffix,
+                    "hold" + str(site_id)):
+            points = self._as_points(self.waypoints.get(key))
+            if points:
+                return min(points, key=lambda point: distance(point, near))
+        return None
+
+    def plant_point(self, site):
+        """A reachable point inside the public plant polygon."""
+        site_id = site.get("id")
+        if site_id in self.plant_points:
+            return list(self.plant_points[site_id])
+        zone = self.plant_zones.get(site_id)
+        polygon = (zone or {}).get("polygon") if isinstance(zone, dict) else None
+        if not polygon:
+            return list(site["center"])
+        candidates = []
+        for point in self.nodes.values():
+            if self._point_in_polygon(point[0], point[1], polygon):
+                candidates.append([point[0], point[1], point[2]])
+        if candidates:
+            point = min(candidates,
+                        key=lambda item: distance(item, site["center"]))
+        else:
+            xs = [item[0] for item in polygon]
+            ys = [item[1] for item in polygon]
+            center = [sum(xs) / len(xs), sum(ys) / len(ys),
+                      site["center"][2]]
+            point = (center if self._point_in_polygon(
+                center[0], center[1], polygon) else list(site["center"]))
+        self.plant_points[site_id] = list(point)
+        return point
+
+    @staticmethod
+    def _point_in_polygon(x, y, polygon):
+        inside = False
+        previous = polygon[-1]
+        for current in polygon:
+            xi, yi = current[0], current[1]
+            xj, yj = previous[0], previous[1]
+            if ((yi > y) != (yj > y)) and (
+                    x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+                inside = not inside
+            previous = current
+        return inside
+
+    def in_plant_zone(self, pos, site):
+        site_id = site.get("id")
+        zone = self.plant_zones.get(site_id)
+        polygon = (zone or {}).get("polygon") if isinstance(zone, dict) else None
+        if polygon:
+            return self._point_in_polygon(pos[0], pos[1], polygon)
+        return distance(pos, site["center"]) < site["radius"] * 0.5
+
+    def route_lane_points(self, site_id, o):
+        """Pick one authored T-side attack route for this round/site.
+
+        dust2 maps these to A long / A short / mid / B tunnels / B doors:
+        ``A_long`` = long->A, ``A_split`` = mid->short->A,
+        ``B_long`` = tunnels->bEntry->B, ``B_split`` = mid->doors->B.
+        """
+        if not self.attack_routes or o["side"] != "attack":
+            return []
+        cache_key = (o["round_index"], site_id,
+                     bool(o["me"].get("carrying_bomb")))
+        if (self.attack_route_round == cache_key
+                and self.attack_route_points):
+            return list(self.attack_route_points)
+        site = next((item for item in self.sites
+                     if item["id"] == site_id), None)
+        position = [o["me"]["x"], o["me"]["y"], o["me"]["z"]]
+        candidates = []
+        for name, keys in self.attack_routes.items():
+            if not isinstance(keys, list) or not keys:
+                continue
+            if keys[-1] != site_id:
+                continue
+            points, valid = [], True
+            for key in keys:
+                if key == site_id:
+                    continue
+                point = self.waypoint_point(key, site)
+                if point is None:
+                    valid = False
+                    break
+                points.append(point)
+            if valid and points:
+                distance_to_first = distance(position, points[0])
+                lane_length = sum(distance(points[index], points[index + 1])
+                                  for index in range(len(points) - 1))
+                candidates.append((distance_to_first + lane_length,
+                                   name, points))
+        if not candidates:
+            return []
+        candidates.sort(key=lambda item: item[0])
+        chosen = candidates[0]
+        # The bomb carrier takes the fastest lane; the rest spread across
+        # similar-length lanes so five T seats do not stack on one entrance.
+        if (not o["me"].get("carrying_bomb") and len(candidates) > 1
+                and candidates[1][0] <= candidates[0][0] * 1.2):
+            chosen = candidates[
+                (o["seat"] + o["round_index"]) % len(candidates)]
+        _score, name, points = chosen
+        self.attack_route_round = cache_key
+        self.attack_route_site = site_id
+        self.attack_route_name = name
+        self.attack_route_points = points
+        return list(points)
+
+    def choose_site(self, o):
+        sites = {site["id"]: site for site in self.sites}
+        bomb = o.get("bomb") or {}
+        site_id = bomb.get("site")
+        if isinstance(site_id, str) and site_id in sites:
+            if o["side"] == "attack":
+                self.carrier_site = site_id
+                self.carrier_site_round = o["round_index"]
+            return sites[site_id]
+        planted = bomb.get("state") == "planted"
+        if planted and bomb.get("position"):
+            return min(self.sites,
+                       key=lambda site: distance(bomb["position"],
+                                                 site["center"]))
+        carrying = o["me"].get("carrying_bomb")
+        # Cache the T-side site for the whole round.  `carrier_site` is the
+        # shared site decision, not only the bomb carrier's own target.
+        if (o["side"] == "attack"
+                and self.carrier_site_round == o["round_index"]
+                and self.carrier_site in sites):
+            return sites[self.carrier_site]
+        if o["side"] == "attack":
+            counts = {}
+            for teammate in o.get("teammates") or []:
+                zone = teammate.get("zone")
+                if zone in sites:
+                    counts[zone] = counts.get(zone, 0) + 1
+            if counts:
+                site_id = max(counts, key=counts.get)
+                self.carrier_site = site_id
+                self.carrier_site_round = o["round_index"]
+                return sites[site_id]
+        if carrying:
+            index = ((o["round_index"] + o["seat"] % 2)
+                     % len(self.sites))
+            site_id = self.sites[index]["id"]
+            self.carrier_site = site_id
+            self.carrier_site_round = o["round_index"]
+            return sites[site_id]
+        index = (o["round_index"] + o["seat"] % 2) % len(self.sites)
+        if o["side"] == "attack":
+            self.carrier_site = self.sites[index]["id"]
+            self.carrier_site_round = o["round_index"]
+        return self.sites[index]
+
+    def patrol_points(self, site, side):
+        """Public bot waypoints used as a hold/patrol ring.
+
+        T side prefers its attack watch points; CT prefers the hold ring.
+        Maps without bot_waypoints keep the old site-center behaviour.
+        """
+        if not self.waypoints:
+            return []
+        site_id = site.get("id")
+        if side == "defend":
+            keys = ["hold" + str(site_id),
+                    "watch" + str(site_id) + "_CT"]
+        else:
+            keys = ["watch" + str(site_id) + "_T",
+                    "hold" + str(site_id)]
+        for key in keys:
+            points = self._as_points(self.waypoints.get(key), site)
+            if points:
+                return points
+        return []
 
     def buy(self, o):
         m = o["me"]
@@ -125,51 +511,99 @@ class Player:
         pitch -= m["pitch"] + 2 * punch.get("pitch", 0.0)
         ready = bool(gun and gun["ammo"]
                      and not gun["reload_until"])
+        aligned = abs(yaw) < 0.04 and abs(pitch) < 0.04
         # Release the trigger between pistol shots.
         trigger = (action["weapon_slot"] == 0
                    or (o["match_tick"] // 3) % 4 == 0)
+        fire = ready and trigger and aligned
+        if ready and aligned:
+            crouch, strafe = True, 0.0
+        else:
+            # Keep moving while the aim is converging instead of freezing.
+            crouch = False
+            direction = 1.0 if (o["match_tick"] // 30) % 2 == 0 else -1.0
+            strafe = COMBAT_STRAFE * direction
         action.update(yaw_rate=clip(yaw / 0.15),
-                      pitch_rate=clip(pitch / 0.1), crouch=True,
-                      fire=ready and trigger and abs(yaw) < 0.04
-                      and abs(pitch) < 0.04)
+                      pitch_rate=clip(pitch / 0.1),
+                      crouch=crouch, move_right=strafe, fire=fire)
         return action
 
-    def move(self, o, goal, action):
+    def combat_move(self, o, action, gun, goal):
+        """Keep aiming/firing while still making progress toward the path."""
+        m = o["me"]
+        action = self.combat(o, action, gun)
+        pos = [m["x"], m["y"], m["z"]]
+        target = self.path[0] if self.path else goal
+        dx, dy = target[0] - pos[0], target[1] - pos[1]
+        error = angle(math.atan2(-dy, dx) - m["yaw"])
+        action.update(move_forward=0.35 * math.cos(error),
+                      move_right=-0.35 * math.sin(error),
+                      crouch=False, walk=False, sprint=False)
+        return action
+
+    def move(self, o, goal, action, via=None, via_key=None, sprint=False):
         m = o["me"]
         pos = [m["x"], m["y"], m["z"]]
-        if self.goal != goal:
-            self.path = []
+        if self.goal != goal or self.via_key != via_key:
+            self.path, self.path_ids = [], []
             self.blocked.clear()
+            self.via_key = via_key
+            self.wp_from_id = None
             self._reset_waypoint_progress()
         if not self.path:
-            self.path, self.goal = self.route(pos, goal), list(goal)
+            self.path, self.path_ids = self.route(pos, goal, via)
+            self.goal = list(goal)
+            self.wp_from_id = None
             self._reset_waypoint_progress()
+        if not self.path:
+            return action
         # Drop waypoints that are already reached, blocked, or behind the
         # next waypoint.  The old 1 m test let the agent turn back to a node
         # it had just passed and then press into its collision shape.
         while len(self.path) > 1:
             point = self.path[0]
+            node_id = self.path_ids[0] if self.path_ids else None
             if tuple(point) in self.blocked:
+                self._penalize_edge(self.wp_from_id, node_id)
                 self.path.pop(0)
+                if self.path_ids:
+                    self.path_ids.pop(0)
+                self.wp_from_id = node_id
                 self._reset_waypoint_progress()
                 continue
             d = distance(pos, point)
             if d < WAYPOINT_RADIUS:
+                self._decay_edge(self.wp_from_id, node_id)
                 self.path.pop(0)
+                if self.path_ids:
+                    self.path_ids.pop(0)
+                self.wp_from_id = node_id
                 self._reset_waypoint_progress()
                 continue
             nxt = self.path[1]
             ahead = ((point[0]-pos[0]) * (nxt[0]-pos[0])
                      + (point[1]-pos[1]) * (nxt[1]-pos[1]))
             if ahead < 0 and d < BEHIND_RADIUS:
+                self._decay_edge(self.wp_from_id, node_id)
                 self.path.pop(0)
+                if self.path_ids:
+                    self.path_ids.pop(0)
+                self.wp_from_id = node_id
                 self._reset_waypoint_progress()
                 continue
             break
+        if not self.path:
+            return action
         point = self.path[0]
         dx, dy = point[0]-pos[0], point[1]-pos[1]
         error = angle(math.atan2(-dy, dx) - m["yaw"])
         d = distance(pos, point)
+        if len(self.path) == 1 and d < 0.6:
+            # The final goal is literally under the agent.  Do not spin on
+            # a zero-length vector; hold this position.
+            action.update(move_forward=0.0, move_right=0.0,
+                          yaw_rate=0.0, walk=True, sprint=False)
+            return action
         if self.wp_point != tuple(point):
             self.wp_point, self.wp_best, self.wp_ticks = tuple(point), d, 0
         elif d < self.wp_best - 0.1:
@@ -179,10 +613,11 @@ class Player:
 
         # Do not walk backwards while turning.  A large heading error means
         # the target is behind; turn in place, then move.
-        forward = 0.75 * math.cos(error)
+        scale = 1.0 if sprint else 0.75
+        forward = scale * math.cos(error)
         if abs(error) > TURN_IN_PLACE:
             forward = 0.0
-        strafe = -0.75 * math.sin(error)
+        strafe = -scale * math.sin(error)
         moving = abs(forward) > 0.1 or abs(strafe) > 0.2
         moved = (self.last_position is None
                  or distance(pos, self.last_position) > 0.01)
@@ -198,13 +633,15 @@ class Player:
         action.update(move_forward=forward,
                       move_right=strafe,
                       yaw_rate=clip(error / 0.15),
-                      pitch_rate=clip(-m["pitch"] / 0.1), walk=True)
+                      pitch_rate=clip(-m["pitch"] / 0.1),
+                      walk=not sprint, sprint=sprint)
         if self.stuck > STUCK_AFTER:
             # A public graph edge may be blocked; back off and strafe.
             side = 0.7 if (o["match_tick"] // 30) % 2 else -0.7
             jump = bool(m["grounded"] and self.stuck % 12 == 0)
             action.update(move_forward=-0.2, move_right=side,
-                          yaw_rate=0.0, jump=jump)
+                          yaw_rate=0.0, jump=jump,
+                          walk=True, sprint=False)
         if self.stuck > STUCK_SKIP or self.wp_ticks > NO_PROGRESS_AFTER:
             # Re-route from the next waypoint instead of clearing the path
             # and picking the same nearest node again.
@@ -216,9 +653,22 @@ class Player:
             self.load_map(o["map"])
         if self.round != o["round_index"]:
             self.round = o["round_index"]
-            self.path, self.goal = [], None
+            self.path, self.path_ids, self.goal = [], [], None
+            self.via_key = None
+            self.wp_from_id = None
             self.last_position, self.stuck = None, 0
             self.blocked.clear()
+            self.patrol_site, self.patrol_index = None, 0
+            self.patrol_last_pos, self.patrol_still = None, 0
+            self.attack_route_round = None
+            self.attack_route_site = None
+            self.attack_route_name = None
+            self.attack_route_points = []
+            self.carrier_site = None
+            self.carrier_site_round = None
+            self.combat_start_tick = None
+            self.combat_last_fire_tick = None
+            self.combat_cooldown_until = 0
             self._reset_waypoint_progress()
         m = o["me"]
         if not m["alive"] or o["phase"] not in ("buy", "live"):
@@ -231,27 +681,134 @@ class Player:
         if gun and gun["ammo"] == 0 and gun["reserve"]:
             action["reload"] = True
         pos = [m["x"], m["y"], m["z"]]
+        tick = o["match_tick"]
         bomb = o["bomb"]
-        index = (o["round_index"] + o["seat"] % 2) % len(self.sites)
-        site = self.sites[index]
-        goal = list(site["center"])
-        planted = bomb["state"] == "planted"
+        planted = bomb.get("state") == "planted"
+        visible_enemy = bool(o.get("visible")) and not m.get("blind_ticks")
+        site = self.choose_site(o)
+        site_id = site["id"]
+        site_distance = distance(pos, site["center"])
+        near_site = site_distance <= (
+            site["radius"] + PATROL_NEAR_SITE_PAD)
+        route_near = site_distance <= site["radius"]
+
         if planted and bomb.get("position"):
             goal = list(bomb["position"])
+        elif m.get("carrying_bomb"):
+            goal = self.plant_point(site)
+        else:
+            goal = list(site["center"])
+
+        via, via_key, patrol_active = [], None, False
+        watch = None
+        if planted and o["side"] == "attack":
+            watch = self.watch_point(
+                site_id, "attack", bomb.get("position") or pos)
+            if watch is not None:
+                goal = list(watch)
+
+        patrol = []
+        if (o["side"] == "defend" and not planted
+                and not m.get("carrying_bomb")
+                and not visible_enemy and near_site):
+            # CT defenders use the hold/watch ring.  T attackers should not
+            # patrol before the plant: switching between site center and a
+            # patrol point near the entry makes the path oscillate.
+            patrol = self.patrol_points(site, o["side"])
+        if patrol:
+            key = (site_id, o["side"])
+            if self.patrol_site != key:
+                self.patrol_site, self.patrol_index = key, 0
+                self.patrol_last_pos, self.patrol_still = None, 0
+            goal = list(patrol[self.patrol_index])
+            if distance(pos, goal) < 2.5:
+                self.patrol_index = (self.patrol_index + 1) % len(patrol)
+                self.patrol_last_pos, self.patrol_still = None, 0
+                goal = list(patrol[self.patrol_index])
+            elif (self.patrol_last_pos is None
+                  or distance(pos, self.patrol_last_pos) > 0.1):
+                self.patrol_last_pos, self.patrol_still = list(pos), 0
+            else:
+                self.patrol_still += 1
+                if self.patrol_still > 40:
+                    # The current hold point is not reachable; try the next
+                    # one instead of holding the same coordinate forever.
+                    self.patrol_index = (self.patrol_index + 1) % len(patrol)
+                    self.patrol_last_pos, self.patrol_still = None, 0
+                    goal = list(patrol[self.patrol_index])
+            patrol_active = True
+        elif (o["side"] == "attack" and not planted
+              and not route_near):
+            # T side: use the map-authored attack lane before direct A*.
+            via = self.route_lane_points(site_id, o)
+            if via:
+                via_key = (o["round_index"], site_id,
+                           self.attack_route_name)
+
         if (o["side"] == "defend" and planted
                 and bomb.get("position")
                 and distance(pos, goal) < 2.0):
-            return dict(action, use="defuse")
-        radius = site["radius"] * 0.5
-        at_site = distance(pos, site["center"]) < radius
-        if m["carrying_bomb"] and at_site:
-            return dict(action, use="plant")
-        if o["visible"] and not m["blind_ticks"]:
-            return self.combat(o, action, gun)
-        if (o["side"] == "attack" and planted
-                and distance(pos, goal) < 8):
-            return dict(action, yaw_rate=0.15, walk=True)
-        return self.move(o, goal, action)
+            fuse_end = bomb.get("fuse_end_tick")
+            fuse_left = (fuse_end - tick) if fuse_end is not None else None
+            if (not visible_enemy
+                    or (fuse_left is not None and fuse_left < 600)):
+                return dict(action, use="defuse")
+
+        if (m.get("carrying_bomb") and not planted
+                and self.in_plant_zone(pos, site)):
+            nearest_enemy = min(
+                (distance(pos, [enemy["x"], enemy["y"], enemy["z"]])
+                 for enemy in o.get("visible") or []),
+                default=None)
+            if (not visible_enemy
+                    or (nearest_enemy is not None and nearest_enemy > 20)):
+                return dict(action, use="plant")
+
+        if visible_enemy:
+            if tick < self.combat_cooldown_until:
+                # Keep aiming while advancing after a stalled fight.
+                action = self.combat_move(o, action, gun, goal)
+                if action.get("fire"):
+                    self.combat_last_fire_tick = tick
+                    self.combat_cooldown_until = 0
+                return action
+            if self.combat_start_tick is None:
+                self.combat_start_tick = tick
+                self.combat_last_fire_tick = tick
+            action = self.combat(o, action, gun)
+            if action.get("fire"):
+                self.combat_last_fire_tick = tick
+            last_fire = (self.combat_last_fire_tick
+                         if self.combat_last_fire_tick is not None
+                         else tick)
+            if tick - last_fire > COMBAT_TIMEOUT_TICKS:
+                self.combat_cooldown_until = (
+                    tick + COMBAT_COOLDOWN_TICKS)
+                action = self.combat_move(o, action, gun, goal)
+                if action.get("fire"):
+                    self.combat_last_fire_tick = tick
+                    self.combat_cooldown_until = 0
+                return action
+            return action
+        else:
+            self.combat_start_tick = None
+            self.combat_last_fire_tick = None
+            self.combat_cooldown_until = 0
+
+        if planted and o["side"] == "attack":
+            hold_radius = 3.0 if watch is not None else 8.0
+            if distance(pos, goal) < hold_radius:
+                return dict(action, yaw_rate=0.15, walk=True,
+                            sprint=False, move_forward=0.0,
+                            move_right=0.0)
+
+        sprint = (not visible_enemy and not patrol_active
+                  and distance(pos, goal) > SPRINT_DISTANCE
+                  and m.get("stamina", 1.0) > STAMINA_MIN
+                  and not m.get("crouch"))
+        action["crouch"] = False
+        return self.move(o, goal, action, via=via, via_key=via_key,
+                         sprint=sprint)
 
 
 _player = Player()
