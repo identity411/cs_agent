@@ -56,14 +56,18 @@ export function groundProbeHeight(lastFloorHeight, currentHeight) {
   return lastFloorHeight + 0.65;
 }
 
-export function retakeStart(map, originSite, targetSite) {
+export function retakeStart(map, originSite, targetSite, preferred = null) {
   if (originSite === targetSite || !['A', 'B'].includes(targetSite)) {
     throw new Error('retake requires opposite sites');
   }
-  const choice = chooseStart(map, `site:${originSite}`);
+  const origin = map.sites.find(item => item.id === originSite);
+  const usePreferred = preferred?.side === 'defend' &&
+    Math.hypot(preferred.position[0] - origin.center[0],
+      preferred.position[1] - origin.center[1]) <= 20;
+  const choice = usePreferred ? preferred : chooseStart(map, `site:${originSite}`);
   const target = map.sites.find(item => item.id === targetSite).center;
   return {...choice, side: 'defend', originSite, targetSite,
-    yaw: Math.atan2(choice.position[1] - target[1],
+    yaw: usePreferred ? choice.yaw : Math.atan2(choice.position[1] - target[1],
       target[0] - choice.position[0])};
 }
 
