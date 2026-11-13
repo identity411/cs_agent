@@ -23,6 +23,12 @@
 - **v0.07 提交**：[`1113-v0.07`](../submissions/1113-v0.07/README.md) — Mirage VIP 狗洞 crouch 穿越、`advance_holds.py` 推进/预瞄锚点（§4.1–4.4 + 多地图 CT A）、Mirage CT A 瞄准 A ramp 并 hold；仅 `account2` version `6` admission `passed` 并激活。
 - **推进/预瞄锚点**：实现 `advance_holds.py` + `move(aim=…)`；§4.1–4.4 的 nevaio 锚点落地，CT A 锚点覆盖 dust2/mirage/nevaio/borgo，molo 用 nav 通用回退。
 - **Mirage VIP 狗洞**：`(75.3,66.2)` 低通道需要蹲下；新增 `CrouchGate` + `traverse_gate()`，通道内 `crouch=True` 且禁止跳跃，修复卡住跳与狗洞冲突。见 [11-13-mirage-vip-doghole.md](11-13-mirage-vip-doghole.md)。
+- **v0.08 提交**：[`1113-v0.08`](../submissions/1113-v0.08/README.md) — `fbd4b6bf` R9 公开帧确认 CT 出生点台阶卡脚 + 90 m 扫射；实现 `STOP_SPEED` 刹停门、远距离 head-only 点射、带包人 40 s 兜底豁免、Mirage A/B 守包 spot/look（不再转圈）和 nevaio `warm_hall` hazard + 回合清 edge penalty；`main` version `5`、`account2` version `7` admission `passed` 并激活。见 [11-13-nevaio-r9-fire-discipline.md](11-13-nevaio-r9-fire-discipline.md) 与 [11-13-post-plant-holds.md](11-13-post-plant-holds.md)。
+- **v0.09 提交**：[`1113-v0.09`](../submissions/1113-v0.09/README.md) — Mirage 用户录制 1410 帧进攻轨迹，仅在地图 ID/哈希匹配时启用位置与准星反馈跟随；`account2` version `8` admission `passed` 并激活。
+- **开火距离分层**：[11-13-fire-range-bands.md](11-13-fire-range-bands.md) — 近距（≤ Mirage A 中央→警家 32.5 m）才扫射；否则点射，且只点头、每 42 ticks（0.7 s）一发；超过 1.5×（48.75 m）仍只点头，但降为每 60 ticks（1 s）一发。取代 [11-13-nevaio-r9-fire-discipline.md](11-13-nevaio-r9-fire-discipline.md) 中“远距离扫射”的验收；本地 82/82 测试通过。
+- **v0.10 提交**：[`1113-v0.10`](../submissions/1113-v0.10/README.md) — 开火距离分层随包提交；同时把 main 从 v5 更新到含 v0.09 Mirage 轨迹的版本。`main` version `6`、`account2` version `9` admission 均 `passed` 并激活，entry code hash `09a4bfac4aaa`；待新对局验证。
+- **战斗稳定性**：[11-13-combat-stability.md](11-13-combat-stability.md) — `5466919c` R19（`round_index 18`）击杀第一人后可见性闪烁导致目标/蹲起/移动抽搐；R18（`round_index 17`）录制路线被卡住的队友堵在 T 出生点 114 s。新增 18-tick 战斗记忆、目标锁、移除战斗蹲起、录制轨迹无进度侧移与放弃回退；本地 86/86 测试通过。
+- **v0.11 提交**：[`1113-v0.11`](../submissions/1113-v0.11/README.md) — 战斗稳定性修复随包提交；`main` version `7`、`account2` version `10` admission 均 `passed` 并激活，entry code hash `a77f1c7e5b22`；待新对局验证。
 
 ## 实测状态（2026-11-12）
 
@@ -70,6 +76,10 @@
 - [11-12-advance-holds.md](11-12-advance-holds.md) — 规范：寻路之后的推进点（跑—停—打—跑、预瞄点/预瞄角度、hold/刹停参数、nevaio 五条 lane 实测数据）。
 - [11-12-mirage-spawn-jump.md](11-12-mirage-spawn-jump.md) — badcase：Mirage R6/R10 出生点滑动卡住与 CT A 台阶；前进跳修复。
 - [11-13-mirage-vip-doghole.md](11-13-mirage-vip-doghole.md) — badcase：Mirage VIP 狗洞需蹲下，卡住跳与其冲突；crouch 穿越修复。
+- [11-13-nevaio-r9-fire-discipline.md](11-13-nevaio-r9-fire-discipline.md) — badcase：nevaio R9 台阶卡脚 + 远距离扫射；刹停门 / 点射 + `warm_hall` hazard + 回合清 edge penalty。
+- [11-13-fire-range-bands.md](11-13-fire-range-bands.md) — 规范：开火距离分层（近距扫射 / 中距只点头点射 0.7 s / 远距只点头点射 1 s）；扫射门取 Mirage A 中央→警家 32.5 m，快速点射边界 48.75 m。
+- [11-13-combat-stability.md](11-13-combat-stability.md) — badcase：R19 可见性闪烁导致第二目标抽搐；R18 录制路线被队友堵死。战斗记忆 / 目标锁 / 不蹲起 / 路线侧移与放弃。
+- [11-13-post-plant-holds.md](11-13-post-plant-holds.md) — 规范：T 守包 hold（不转圈）+ 带包人 40 s 兜底豁免；Mirage A/B spot/look 数据。
 
 > 完整武器 / 装备 / 投掷物数值不落盘,以官方冻结目录为准。
 
@@ -85,6 +95,7 @@ badcase 采用 `MM-DD-<theme>.md` 命名；新 badcase 按日期追加，不改�
 | 2026-11-12 | [11-12-economy-rotation-combat.md](11-12-economy-rotation-combat.md) | 对局已确认（v0.01）；v0.02 回防启动改善、到位仍 0（见可观测性规范） |
 | 2026-11-12 | [11-12-mirage-spawn-jump.md](11-12-mirage-spawn-jump.md) | R6（带包 seat 2）/ R10（带包 seat 1）与 CT A 台阶已用公开帧确认；前进跳随 v0.04 提交/激活，待新对局验证 |
 | 2026-11-13 | [11-13-mirage-vip-doghole.md](11-13-mirage-vip-doghole.md) | account2 `dc5d2841` 公开帧确认；crouch 穿越随 v0.07 提交/激活，待新对局验证 |
+| 2026-11-13 | [11-13-nevaio-r9-fire-discipline.md](11-13-nevaio-r9-fire-discipline.md) | account2 `fbd4b6bf` R9 公开帧确认（tick 42147–44326）；刹停/点射 + nevaio hazard 本地实现，75/75 测试通过，待提交/新对局验证 |
 
 ## 提交版本与改动说明
 
@@ -100,6 +111,10 @@ badcase 采用 `MM-DD-<theme>.md` 命名；新 badcase 按日期追加，不改�
 | `1113-v0.05` | [1113-v0.05/README.md](../submissions/1113-v0.05/README.md) | [11-12-pathing-routes.md](11-12-pathing-routes.md) |
 | `1113-v0.06` | [1113-v0.06/README.md](../submissions/1113-v0.06/README.md) | [11-12-pathing-routes.md](11-12-pathing-routes.md) |
 | `1113-v0.07` | [1113-v0.07/README.md](../submissions/1113-v0.07/README.md) | [11-12-advance-holds.md](11-12-advance-holds.md), [11-13-mirage-vip-doghole.md](11-13-mirage-vip-doghole.md), [11-12-pathing-routes.md](11-12-pathing-routes.md) |
+| `1113-v0.08` | [1113-v0.08/README.md](../submissions/1113-v0.08/README.md) | [11-13-nevaio-r9-fire-discipline.md](11-13-nevaio-r9-fire-discipline.md), [11-13-post-plant-holds.md](11-13-post-plant-holds.md), [11-12-advance-holds.md](11-12-advance-holds.md), [11-12-pathing-routes.md](11-12-pathing-routes.md) |
+| `1113-v0.09` | [1113-v0.09/README.md](../submissions/1113-v0.09/README.md) | [11-12-pathing-routes.md](11-12-pathing-routes.md) |
+| `1113-v0.10` | [1113-v0.10/README.md](../submissions/1113-v0.10/README.md) | [11-13-fire-range-bands.md](11-13-fire-range-bands.md) |
+| `1113-v0.11` | [1113-v0.11/README.md](../submissions/1113-v0.11/README.md) | [11-13-combat-stability.md](11-13-combat-stability.md), [11-13-fire-range-bands.md](11-13-fire-range-bands.md) |
 
 ## 待补 / 待核实
 
@@ -112,5 +127,7 @@ badcase 采用 `MM-DD-<theme>.md` 命名；新 badcase 按日期追加，不改�
 - [ ] A* + attackRoutes + sprint/战斗超时/plant zone 的新对局验证（见 [11-12-pathing-routes.md](11-12-pathing-routes.md)）
 - [x] 推进点（Advance Holds）实现已随 v0.07 提交/激活；下一场正式对局的到点/预瞄回填仍待完成（见 [11-12-advance-holds.md](11-12-advance-holds.md)）
 - [x] post-v0.03 修正已作为 v0.04 提交/激活（T pre-plant patrol 振荡、soft hazard、前进跳 / 台阶跳、`map_patches.py`）；待新对局验证（见 [11-12-pathing-routes.md](11-12-pathing-routes.md) 与 [11-12-mirage-spawn-jump.md](11-12-mirage-spawn-jump.md)）
+- [ ] 开火距离分层的新对局验证：点射只打头、0.7 s / 1 s 两档节奏、近距扫射占比（见 [11-13-fire-range-bands.md](11-13-fire-range-bands.md)）
+- [ ] 战斗稳定性回填：可见性闪烁期间不再移动/蹲起/换目标；出生点被队友堵住后 0.5 s 内侧移（见 [11-13-combat-stability.md](11-13-combat-stability.md)）
 
 > 官方指南中的源码行号仅用于核对语义，不是运行时依赖。不要从全知录像或训练导出重建观察。

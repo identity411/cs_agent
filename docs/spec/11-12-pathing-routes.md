@@ -2,7 +2,7 @@
 
 Status: **2026-11-13 Dust2 用户轨迹跟随随 `1113-v0.06`（account2 v5）、VIP 狗洞 crouch / 推进预瞄锚点随 `1113-v0.07`（account2 v6）提交并激活；原有 `1112-v0.04` 仍为 main version 4。全量 unittest 66/66 通过；正式对局效果待验证。**
 Date: 2026-11-12
-Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照）· [1113-v0.05](../submissions/1113-v0.05/README.md)（Dust2 用户轨迹跟随）· [1113-v0.06](../submissions/1113-v0.06/README.md)（原地准星帧修正）· [11-12-advance-holds.md](./11-12-advance-holds.md)（下游：寻路之后的推进点 / 预瞄角 / 刹停）· [11-12-mirage-spawn-jump.md](./11-12-mirage-spawn-jump.md)（Mirage R6/R10 与 CT A 卡台阶）· [11-12-match-observability.md](./11-12-match-observability.md)（卡死/到点/回防指标）· [11-12-stuck-at-spawn.md](./11-12-stuck-at-spawn.md)（出生点卡住）· [11-12-site-center-hold.md](./11-12-site-center-hold.md)（包点中心 hold）· [maps.md](./maps.md)（nav / bot_waypoints 边界）· [agent-interface.md](./agent-interface.md)（动作字段）
+Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照）· [1113-v0.05](../submissions/1113-v0.05/README.md)（Dust2 用户轨迹跟随）· [1113-v0.06](../submissions/1113-v0.06/README.md)（原地准星帧修正）· [1113-v0.09](../submissions/1113-v0.09/README.md)（Mirage 录制轨迹）· [11-12-advance-holds.md](./11-12-advance-holds.md)（下游：寻路之后的推进点 / 预瞄角 / 刹停）· [11-12-mirage-spawn-jump.md](./11-12-mirage-spawn-jump.md)（Mirage R6/R10 与 CT A 卡台阶）· [11-12-match-observability.md](./11-12-match-observability.md)（卡死/到点/回防指标）· [11-12-stuck-at-spawn.md](./11-12-stuck-at-spawn.md)（出生点卡住）· [11-12-site-center-hold.md](./11-12-site-center-hold.md)（包点中心 hold）· [maps.md](./maps.md)（nav / bot_waypoints 边界）· [agent-interface.md](./agent-interface.md)（动作字段）
 
 ## 0. 目标
 
@@ -167,9 +167,9 @@ Mirage 证据与两个已知台阶见 [11-12-mirage-spawn-jump.md](./11-12-mirag
 
 **这是临时逻辑，不是长期战术。** 比赛初期各家的 nav 数据/碰撞都不稳定，agent 容易卡在自家出生点；为了避免整回合卡死，T 方在 `round_tick >= 2400`（40 s，60 Hz，包含 freeze time）仍未下包时，直接改目标为 CT 出生点：
 
-- 条件：`side == "attack"`、`bomb.state != "planted"`、`round_tick >= TEMP_T_CT_FALLBACK_TICKS`、地图有 CT spawn；
-- 带包/不带包都执行，且跳过 attack lane 与 plant 判定；
-- 一旦炸弹下包，立即恢复正常的 T post-plant watch；
+- 条件：`side == "attack"`、`bomb.state != "planted"`、**`me.carrying_bomb == false`**、`round_tick >= TEMP_T_CT_FALLBACK_TICKS`、地图有 CT spawn；
+- **带包人豁免**（2026-11-13）：自己带包时兜底不生效，目标仍是 `plant_point(site)`；在 plant zone 内且安全时直接下包，下包后进入守包 hold；不带包的队友仍按兜底去 CT spawn；
+- 一旦炸弹下包，立即恢复 T post-plant watch；2026-11-13 起改用 `advance_holds.PlantHold` 的掩体 spot + 离散 look 循环，不再原地 `yaw_rate=0.15` 转圈（见 [11-13-post-plant-holds.md](./11-13-post-plant-holds.md)）；
 - CT 方、已下包回合不受影响；
 - 代码常量 `TEMP_T_CT_FALLBACK_TICKS` 和注释都标了 `TEMPORARY`，后续 nav 边验证完成、卡死率下降后应删除；
 - 地图没有 `spawns` / `spawn_pads_by_side` 时自动禁用。
@@ -258,7 +258,7 @@ python3 scripts/simulate_nav.py --side defend --site B --round 2 \
 - 尚未跑新对局；所有效果需用下一场正式对局和 `agx_observe.py` 回填。
 - 没有可用的碰撞网格文件；static 只有引用。nav 边仍可能不可走，边代价只能事后学习。
 - `map_patches.py` 里的 hazard 是从公开帧单次卡死位置种下的 soft penalty；如果碰撞验证显示该点其实可走，应降低/删除，避免过度绕路。
-- 临时 T 兜底（40 s 未下包 → CT spawn）是为了绕开早期 nav/碰撞卡死，不是正常战术；它会让带包人放弃可下的包，nav 卡死率下降后应删除 `TEMP_T_CT_FALLBACK_TICKS` 分支。
+- 临时 T 兜底（40 s 未下包 → CT spawn）是为了绕开早期 nav/碰撞卡死，不是正常战术；2026-11-13 起带包人已豁免（见 §5.1），不带包的队友仍可能被拉去 CT spawn；nav 卡死率下降后应删除 `TEMP_T_CT_FALLBACK_TICKS` 分支。
 - `source-adjacency` 反向边默认关闭；若后续实测可走，再逐图开启。
 - `plant_point` 目前优先选 zone 内离 site center 最近的 nav 节点；若该点被挡，仍可能走不到。
 - CT 还没有 dust2 `ctRoleLane`/`ctRoles` 的进攻性分路；本轮先解决 T 方“出去/到点/下包”。
@@ -274,8 +274,9 @@ python3 scripts/simulate_nav.py --side defend --site B --round 2 \
 - [x] combat strafe + 超时恢复测试。
 - [x] 真实 dust2/nevaio/borgo static 路径冒烟测试。
 - [x] 前进跳 / 台阶跳 / `map_patches` 接线测试。
-- [x] 临时 T 兜底：40 s 未下包去 CT spawn；下包后/CT 方不触发。
+- [x] 临时 T 兜底：40 s 未下包去 CT spawn；下包后/CT 方不触发；带包人 2026-11-13 起豁免。
+- [x] 2026-11-13：`combat()` 增加 `STOP_SPEED` 刹停门与远距离 tap；T post-plant 改用 `PlantHold` spot/look，不再原地转圈。
 - [ ] 新对局：dust2 T 侧 R13/R14/R15/R17/R19 不再“未到点且离出生点 <20 units”。
 - [ ] 新对局：T 方有开火/交战回合比例不低于 v0.02；到点时间中位数 <40 s。
-- [ ] 新对局：拿包回合能进 plant zone 下包；下包后不再停在炸弹 8 m 内慢转。
+- [ ] 新对局：拿包回合能进 plant zone 下包；下包后不再停在炸弹 8 m 内慢转（本地已用 PlantHold 修复，待回填）。
 - [ ] 新对局：Mirage T 出生点西侧 / CT A 台阶不再整回合卡住（见 `11-12-mirage-spawn-jump.md`）。

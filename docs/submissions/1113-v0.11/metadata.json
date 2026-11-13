@@ -1,0 +1,109 @@
+{
+  "version": "1113-v0.11",
+  "date": "2026-11-13",
+  "competition_id": "2a97f94f-816a-52b7-b4b8-5925db160245",
+  "contract": "rsi-fps-5.5",
+  "status": "main submitted; admission passed; version 7 activated · account2 submitted; admission passed; version 10 activated",
+  "files": {
+    "advance_holds.py": "7fc4335a1a1df5e59364fff69bcd362f9341ad122084dfa09f6b67272939dd39",
+    "agent.py": "4123b1a0d283ad25d5149082e8e30f3dfd8d521fb403b687595ca05ef47253d2",
+    "dust2_replay.py": "76c53c1578c1b583e7fab424290b4d23a3f2e304b2fd4f8f9b1bfb945cd6ba77",
+    "map_patches.py": "ecf5540c904f2cb1c71406038486e83fb071c0085fb4262ccbac07f5eb0b21d1",
+    "mirage_replay.py": "23819c85051e80d1396b9583d7819eb00540a4f103e64fce03ad79bb4e958e3f"
+  },
+  "change_note": "README.md",
+  "related_specs": ["docs/spec/11-13-combat-stability.md", "docs/spec/11-13-fire-range-bands.md"],
+  "api_result": {
+    "schema_version": 1,
+    "command": "submit",
+    "zip": "/private/tmp/agx-agent-v011.zip",
+    "zip_sha256": "a77f1c7e5b22dd67db789bef050088bce1f0561b8878533715f023ba44c019af",
+    "started_at": "2026-11-13T04:48:57.183728+00:00",
+    "accounts": [
+      {
+        "account": "main",
+        "key_fingerprint": "sha256:e6aafdb7610e",
+        "base_url": "https://agx.cool",
+        "competition_id": "2a97f94f-816a-52b7-b4b8-5925db160245",
+        "game_id": "fps",
+        "agent_id": "11a0f0db-afda-4a57-a2f4-36ed0462085e",
+        "agent_created": false,
+        "registered": true,
+        "bundle_id": "ae3a40d0-1c69-4c68-bf7b-4d5165f9afac",
+        "admission": "passed",
+        "activated": true,
+        "version_id": "44d00f5f-60a5-430f-8012-1e3626d01cb3",
+        "version_number": 7,
+        "zip_sha256": "a77f1c7e5b22dd67db789bef050088bce1f0561b8878533715f023ba44c019af",
+        "idempotency_key": "cdca0ab5-dbbd-503b-98ae-841d7d35bf50",
+        "activation": {
+          "agent_id": "11a0f0db-afda-4a57-a2f4-36ed0462085e",
+          "version_id": "44d00f5f-60a5-430f-8012-1e3626d01cb3",
+          "submission_id": "ae3a40d0-1c69-4c68-bf7b-4d5165f9afac",
+          "runtime_id": "python-agent-v1"
+        },
+        "entry": {
+          "id": "f81706cb-1aa5-54e6-9e4b-e1199ca25820",
+          "agent_id": null,
+          "version_id": null,
+          "version_number": 7,
+          "code_hash_short": "a77f1c7e5b22"
+        },
+        "verification": [
+          {
+            "path": "/api/v1/python-submissions/agents/11a0f0db-afda-4a57-a2f4-36ed0462085e/bundles",
+            "status": 200
+          },
+          {
+            "path": "/api/v1/me/competitions/2a97f94f-816a-52b7-b4b8-5925db160245/versions",
+            "status": 200
+          }
+        ],
+        "status": "activated"
+      },
+      {
+        "account": "account2",
+        "key_fingerprint": "sha256:7e2fa55a6034",
+        "base_url": "https://agx.cool",
+        "competition_id": "2a97f94f-816a-52b7-b4b8-5925db160245",
+        "game_id": "fps",
+        "agent_id": "291c135e-e580-4762-b007-906a0fb742df",
+        "agent_created": false,
+        "registered": true,
+        "bundle_id": "10e01070-ad5e-4b6d-bd0f-1cac55fa9556",
+        "admission": "passed",
+        "activated": true,
+        "version_id": "b5a31984-1137-45f9-badb-5b5ee7a43263",
+        "version_number": 10,
+        "zip_sha256": "a77f1c7e5b22dd67db789bef050088bce1f0561b8878533715f023ba44c019af",
+        "idempotency_key": "98a6bee5-2eb9-5180-8b3d-50866d86350f",
+        "activation": {
+          "agent_id": "291c135e-e580-4762-b007-906a0fb742df",
+          "version_id": "b5a31984-1137-45f9-badb-5b5ee7a43263",
+          "submission_id": "10e01070-ad5e-4b6d-bd0f-1cac55fa9556",
+          "runtime_id": "python-agent-v1"
+        },
+        "entry": {
+          "id": "a23486ad-a765-51b7-b2a9-b090b2d2e48f",
+          "agent_id": null,
+          "version_id": null,
+          "version_number": 10,
+          "code_hash_short": "a77f1c7e5b22"
+        },
+        "verification": [
+          {
+            "path": "/api/v1/python-submissions/agents/291c135e-e580-4762-b007-906a0fb742df/bundles",
+            "status": 200
+          },
+          {
+            "path": "/api/v1/me/competitions/2a97f94f-816a-52b7-b4b8-5925db160245/versions",
+            "status": 200
+          }
+        ],
+        "status": "activated"
+      }
+    ],
+    "ok": true,
+    "finished_at": "2026-11-13T04:49:20.755209+00:00"
+  }
+}

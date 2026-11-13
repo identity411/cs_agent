@@ -46,6 +46,15 @@ EMPTY = MapPatch()
 # Hazard entries are (x, y, radius) in platform map coordinates.  They are
 # soft penalties: A* still uses the edge if there is no alternative.
 PATCHES = {
+    # R7/R9 of account2 `fbd4b6bf` (v0.07): the CT spawn exit toward
+    # warm_hall trapped seat 0 at (117.3,18.0) while it pressed west and
+    # jumped/slid in place for 25-29 s.  Both CT->B routes weigh 74 m;
+    # penalising warm_hall sends A* through rear_corner/rear_door instead.
+    # The learned edge penalties must also be reset per round, otherwise a
+    # stale rear-route penalty re-selects warm_hall (see agent.py).
+    "nevaio-r3-v54": MapPatch(hazards=(
+        (86.0, 18.0, 4.0),
+    )),
     # v0.02: T-side (83.4, 88.2); CT A entrance (160.63, 125.71).
     "dust2-cs2-v54": MapPatch(hazards=(
         (83.4, 88.2, 3.0),

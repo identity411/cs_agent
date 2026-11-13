@@ -20,3 +20,7 @@
 | `1113-v0.05` | 2026-11-13 | 已提交；admission passed；account2 v4（Dust2 录制轨迹闭环跟随） | [README](1113-v0.05/README.md) |
 | `1113-v0.06` | 2026-11-13 | 已提交；admission passed；account2 v5（原地准星帧逐拍回放） | [README](1113-v0.06/README.md) |
 | `1113-v0.07` | 2026-11-13 | 已提交；admission passed；account2 v6（VIP 狗洞 crouch / 推进预瞄锚点 / Mirage CT A） | [README](1113-v0.07/README.md) |
+| `1113-v0.08` | 2026-11-13 | 已提交；admission passed；main v5 / account2 v7（刹停点射 / 带包 40 s 豁免 / Mirage 守包 hold / nevaio 出生点 hazard） | [README](1113-v0.08/README.md) |
+| `1113-v0.09` | 2026-11-13 | 已提交；admission passed；account2 v8（Mirage 录制轨迹跟随） | [README](1113-v0.09/README.md) |
+| `1113-v0.10` | 2026-11-13 | 已提交；admission passed；main v6 / account2 v9（开火距离分层：近距扫射 / 中距只点头 0.7 s / 远距只点头 1 s） | [README](1113-v0.10/README.md) |
+| `1113-v0.11` | 2026-11-13 | 已提交；admission passed；main v7 / account2 v10（战斗记忆 / 目标锁 / 不蹲起；录制路线被队友堵住侧移与放弃） | [README](1113-v0.11/README.md) |

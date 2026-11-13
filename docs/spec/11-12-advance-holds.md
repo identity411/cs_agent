@@ -248,7 +248,7 @@ yaw_rate = clip(angle(aim_dir - me["yaw"]) / 0.15)
 | `route_lane_points()` | 保持官方 `attackRoutes` 优先级；没有官方 lane 时，`advance_lane_points()` 从 `advance_holds` 选 lane，并把 stop 点作为 `via`。 |
 | `act()`（无敌人分支） | CT 无官方 patrol 时选 anchor：goal = anchor.stop；到达 `STOP_RADIUS` 后 `hold_aim()` 零移动、准星锁 aim；T 在 lane 上取下一个点的 aim。 |
 | `move()` | 新增 `aim` 参数：移动向量仍沿 path，yaw/pitch 锁 aim；waypoint 在身后（|error|>2π/3）时暂停预瞄。 |
-| `combat()` | 本次未改；BRAKE（速度 > `STOP_SPEED` 时禁火）仍是下一步。 |
+| `combat()` | 2026-11-13 已实现 BRAKE（速度 > `STOP_SPEED` 时禁火）、远距离/head-only tap 与近距离 spray；开火距离分层见 [11-13-fire-range-bands.md](./11-13-fire-range-bands.md)，历史取证见 [11-13-nevaio-r9-fire-discipline.md](./11-13-nevaio-r9-fire-discipline.md)。 |
 
 注意：`walk` 默认值没有改成 `walk=False`（避免一次改动过大）；当前仍走 `walk=not sprint`。后续需要单独验证跑动速度/命中率。
 
@@ -325,6 +325,7 @@ python3 .claude/skills/agx-match-query/scripts/agx_matches.py events \
 - [x] `move()` 预瞄 yaw 与移动方向解耦（`aim` 参数）。
 - [x] 单元测试：预瞄 yaw 符号、aim 头部高度、CT A hold 不移动、未知地图空数据。
 - [ ] `walk` 默认改为 `walk=False`，验证跑动到点时间。
-- [ ] `combat()` 增加 `STOP_SPEED` 刹停门。
+- [x] `combat()` 增加 `STOP_SPEED` 刹停门、远距离 head-only tap / 近距离 body spray（2026-11-13，`fbd4b6bf` R9 回填）。
+- [x] T post-plant 守包使用 `advance_holds.PlantHold` spot/look；Mirage A/B 数据已落地，不再原地旋转（见 [11-13-post-plant-holds.md](./11-13-post-plant-holds.md)）。
 - [ ] 下一场正式对局回填到点时间/跑动占比/站定命中率/卡死。
 - [ ] 评估 `bot_waypoints.attackRoutes` 与本地 lane 的优先级是否需要按地图配置。

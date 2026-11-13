@@ -5,6 +5,16 @@ import math
 import advance_holds
 import map_patches
 
+
+def recorded_route(map_id, geometry_hash):
+    if map_id == "dust2-cs2-v54":
+        from dust2_replay import MAP_HASH, ROUTE
+    elif map_id == "mirage-cs2-v54":
+        from mirage_replay import MAP_HASH, ROUTE
+    else:
+        return None
+    return ROUTE if geometry_hash == MAP_HASH else None
+
 # Navigation tolerances.  The waypoint radius is deliberately larger than
 # 1 m: a 1 m radius makes the agent turn back to a node it has just passed
 # when the engine's collision shape stops it a little short.
@@ -55,7 +65,34 @@ REPLAY_LOOKAHEAD_METERS = 2.5
 PATROL_NEAR_SITE_PAD = 12.0
 COMBAT_TIMEOUT_TICKS = 90      # match ticks (~1.5 s) without fire
 COMBAT_COOLDOWN_TICKS = 60     # move-only window after a stalled combat
-COMBAT_STRAFE = 0.35
+# BRAKE gate from docs/spec/11-12-advance-holds.md §3.2/§6: the reference
+# player hits 76.5% when standing still and 17.5% when running.  Do not
+# pull the trigger while sliding on a step or while airborne.
+STOP_SPEED = 1.0
+# Fire discipline from docs/spec/11-13-fire-range-bands.md.  Spray only
+# inside the close band, otherwise tap the head: 0.7 s per shot up to 1.5x
+# the close band, 1 s per shot beyond it.  The close band is the measured
+# Mirage A site centre -> CT spawn distance: A (44.67, 88.18) to the mean
+# CT spawn pad (51.80, 56.41) is 32.56 m.
+SPRAY_RANGE = 32.5             # ~Mirage A site centre -> CT spawn (32.6 m)
+TAP_RANGE = 1.5 * SPRAY_RANGE  # 48.75 m; slower taps beyond this
+TAP_INTERVAL_TICKS = 42        # 0.7 s at 60 Hz
+LONG_TAP_INTERVAL_TICKS = 60   # 1.0 s at 60 Hz
+TAP_ALIGN = 0.02               # ~1.1 degrees for a head tap
+SPRAY_ALIGN = 0.04             # ~2.3 degrees for a close spray
+# A partially occluded enemy makes `visible` flicker at the 20 Hz decision
+# rate.  Without a short memory the agent alternates combat/replay-follow
+# every tick (round 19 twitch) and the tap cadence resets on each gap.
+COMBAT_MEMORY_TICKS = 18       # ~0.3 s
+# Recorded-route movement can pin the agent behind a teammate parked on the
+# lane (round 18 T spawn).  Teammate positions are not in the observation,
+# so the only signal is "moving input but no displacement".
+REPLAY_BLOCK_TICKS = 20        # ~0.33 s without progress counts as blocked
+REPLAY_AVOID_TICKS = 24        # ~0.4 s lateral sidestep
+REPLAY_AVOID_ATTEMPTS = 4      # then abandon the recorded route this round
+HOLD_LOOK_DWELL = 3.0          # seconds per plant-hold look direction
+POST_PLANT_RADIUS = 2.0        # 3D arrival radius for a plant-hold spot
+POST_PLANT_TIMEOUT_TICKS = 640  # ~10 s; fall back to guarding the bomb
 
 
 def clip(value):
@@ -68,6 +105,22 @@ def distance(a, b):
 
 def angle(value):
     return (value + math.pi) % (2 * math.pi) - math.pi
+
+
+def fire_mode(distance_xy, parts):
+    """Pick the trigger band for a visible enemy.
+
+    ``spray``: inside the Mirage A->CT-spawn band with a body part visible.
+    ``tap``: up to 1.5x that band; head only, one shot per 0.7 s.
+    ``tap_long``: beyond 1.5x; still head only, one shot per 1 s.
+    """
+    parts = parts or ()
+    body = any(part in parts for part in ("chest", "abdomen"))
+    if distance_xy > TAP_RANGE:
+        return "tap_long"
+    if distance_xy <= SPRAY_RANGE and body:
+        return "spray"
+    return "tap"
 
 
 def follow_trajectory(frames, cursor, pos, yaw, pitch):
@@ -171,9 +224,8 @@ class Player:
         self.attack_route_points = []
         self.carrier_site = None
         self.carrier_site_round = None
-        self.combat_start_tick = None
-        self.combat_last_fire_tick = None
-        self.combat_cooldown_until = 0
+        self._reset_combat_state()
+        self._reset_post_plant_state()
         self.advance = advance_holds.EMPTY
         self.advance_route_key = None
         self.advance_route_name = None
@@ -187,6 +239,8 @@ class Player:
         self.replay_cursor = 0
         self.replay_rejoin_index = None
         self.replay_done = False
+        self.replay_abandoned = False
+        self._reset_replay_avoid()
 
     @staticmethod
     def _first_spawn(row, side, pad_side):
@@ -251,6 +305,53 @@ class Player:
         self.wp_from_id = None
         self.blocked.clear()
         self.edge_penalty.clear()
+        self._apply_map_hazards()
+        self.patrol_site, self.patrol_index = None, 0
+        self.patrol_last_pos, self.patrol_still = None, 0
+        self.attack_route_round = None
+        self.attack_route_site = None
+        self.attack_route_name = None
+        self.attack_route_points = []
+        self.carrier_site = None
+        self.carrier_site_round = None
+        self._reset_combat_state()
+        self._reset_post_plant_state()
+        self._reset_waypoint_progress()
+
+    def _reset_waypoint_progress(self):
+        self.wp_point, self.wp_ticks = None, 0
+        self.wp_last_d, self.wp_progress = None, 0.0
+        self.jump_attempts = 0
+
+    def _reset_combat_state(self):
+        self.combat_start_tick = None
+        self.combat_last_fire_tick = None
+        self.combat_tap_tick = None
+        self.combat_cooldown_until = 0
+        self.combat_hold = False
+        self.combat_target_seat = None
+        self.combat_last_target = None
+        self.combat_target_seen_tick = 0
+        self.combat_memory_until = 0
+
+    def _reset_replay_avoid(self):
+        self.replay_anchor_pos = None
+        self.replay_anchor_tick = 0
+        self.replay_avoid_until = 0
+        self.replay_avoid_dir = 1
+        self.replay_avoid_attempts = 0
+
+    def _reset_post_plant_state(self):
+        self.post_plant_key = None
+        self.post_plant_plan = None
+        self.post_plant_spot = 0
+        self.post_plant_look = 0
+        self.post_plant_until = 0
+        self.post_plant_spot_since = None
+        self.post_plant_force_generic = False
+
+    def _apply_map_hazards(self):
+        """Penalize every nav edge touching a permanent hazard node."""
         for hazard_x, hazard_y, hazard_radius in self.map_patch.hazards:
             for node_id, point in self.nodes.items():
                 if math.hypot(point[0] - hazard_x,
@@ -262,23 +363,6 @@ class Player:
                     if node_id in neighbors:
                         self.edge_penalty[(source, node_id)] = (
                             EDGE_PENALTY_MAX)
-        self.patrol_site, self.patrol_index = None, 0
-        self.patrol_last_pos, self.patrol_still = None, 0
-        self.attack_route_round = None
-        self.attack_route_site = None
-        self.attack_route_name = None
-        self.attack_route_points = []
-        self.carrier_site = None
-        self.carrier_site_round = None
-        self.combat_start_tick = None
-        self.combat_last_fire_tick = None
-        self.combat_cooldown_until = 0
-        self._reset_waypoint_progress()
-
-    def _reset_waypoint_progress(self):
-        self.wp_point, self.wp_ticks = None, 0
-        self.wp_last_d, self.wp_progress = None, 0.0
-        self.jump_attempts = 0
 
     def _penalize_edge(self, here, there):
         """Remember that an edge trapped the agent; cap the penalty."""
@@ -445,6 +529,101 @@ class Player:
             if points:
                 return min(points, key=lambda point: distance(point, near))
         return None
+
+    def generic_plant_plan(self, site, bomb_position):
+        """Non-spinning fallback when the map has no authored hold data.
+
+        The bomb itself is the cover spot; nearby T hold/watch waypoints
+        are used only if they stay close to the bomb.  Looks alternate
+        between the CT retake lane and the bomb.
+        """
+        bomb = list(bomb_position or site["center"])
+        spots = [point for point in self.patrol_points(site, "attack")
+                 if distance(point, bomb) <= 12.0]
+        if not spots:
+            spots = [bomb]
+        looks = []
+        if self.ct_spawn is not None:
+            ct = list(self.ct_spawn)
+            looks.append(advance_holds.PlantLook(
+                (ct[0], ct[1], ct[2] + advance_holds.HEAD_HEIGHT),
+                dwell_ticks=int(HOLD_LOOK_DWELL * 64)))
+        looks.append(advance_holds.PlantLook(
+            (bomb[0], bomb[1], bomb[2] + 0.5),
+            dwell_ticks=int(HOLD_LOOK_DWELL * 64)))
+        return advance_holds.PlantHold(
+            "generic", site["id"],
+            [advance_holds.PlantSpot(spot, looks) for spot in spots])
+
+    def _plant_hold_plan(self, o, site, bomb):
+        site_id = site["id"]
+        bomb_pos = list(bomb.get("position") or site["center"])
+        key = (o["round_index"], site_id, tuple(bomb_pos),
+               self.post_plant_force_generic)
+        if self.post_plant_key != key:
+            plan = (None if self.post_plant_force_generic
+                    else self.advance.plant_hold(site_id))
+            if plan is None:
+                plan = self.generic_plant_plan(site, bomb_pos)
+            self.post_plant_key = key
+            self.post_plant_plan = plan
+            seat = o.get("seat", 0)
+            # Authored plans start at the sofa/box spot explicitly named
+            # by the user; only the look direction is spread across seats.
+            self.post_plant_spot = 0
+            spot = plan.spots[self.post_plant_spot]
+            self.post_plant_look = (seat % len(spot.looks)
+                                    if spot.looks else 0)
+            self.post_plant_until = 0
+            self.post_plant_spot_since = None
+        return self.post_plant_plan
+
+    def post_plant_target(self, o, site, bomb, pos, visible_enemy):
+        """Return (spot, look, at_stop) for the T-side post-plant watch.
+
+        The cadence only advances while the agent is standing on the spot
+        and no enemy is visible; a fight restarts the current dwell.
+        """
+        plan = self._plant_hold_plan(o, site, bomb)
+        if not plan or not plan.spots:
+            return None, None, False
+        spot = plan.spots[self.post_plant_spot % len(plan.spots)]
+        look = spot.looks[self.post_plant_look % len(spot.looks)]
+        at_stop = distance(pos, spot.stop) <= POST_PLANT_RADIUS
+        tick = o["match_tick"]
+        if not at_stop:
+            self.post_plant_until = 0
+            if self.post_plant_spot_since is None:
+                self.post_plant_spot_since = tick
+            elif (tick - self.post_plant_spot_since
+                  > POST_PLANT_TIMEOUT_TICKS):
+                # A bad cover spot must not become a new round-long stuck
+                # case.  Fall back to guarding the bomb directly.
+                self.post_plant_force_generic = True
+                plan = self._plant_hold_plan(o, site, bomb)
+                spot = plan.spots[self.post_plant_spot % len(plan.spots)]
+                look = spot.looks[self.post_plant_look % len(spot.looks)]
+                at_stop = distance(pos, spot.stop) <= POST_PLANT_RADIUS
+            return spot, look, at_stop
+        self.post_plant_spot_since = None
+        if visible_enemy:
+            self.post_plant_until = 0
+            return spot, look, True
+        if self.post_plant_until == 0:
+            self.post_plant_until = tick + look.dwell_ticks
+        elif tick >= self.post_plant_until:
+            self.post_plant_look += 1
+            if self.post_plant_look >= len(spot.looks):
+                self.post_plant_look = 0
+                self.post_plant_spot = (
+                    (self.post_plant_spot + 1) % len(plan.spots))
+                self.post_plant_spot_since = tick
+            spot = plan.spots[self.post_plant_spot % len(plan.spots)]
+            look = spot.looks[self.post_plant_look % len(spot.looks)]
+            at_stop = distance(pos, spot.stop) <= POST_PLANT_RADIUS
+            self.post_plant_until = (tick + look.dwell_ticks
+                                     if at_stop else 0)
+        return spot, look, at_stop
 
     def plant_point(self, site):
         """A reachable point inside the public plant polygon."""
@@ -784,43 +963,182 @@ class Player:
             return {"buy": "armor"}
         return {}
 
+    def _pick_target(self, o, m):
+        """Keep the locked target; switch only when it is clearly gone.
+
+        ``visible`` samples flicker at the decision rate when an enemy
+        peeks from cover.  Re-picking the nearest enemy every tick made the
+        crosshair jump between a 25 m and a 48 m target in round 19.
+        """
+        visible = o["visible"]
+        tick = o["match_tick"]
+        nearest = min(visible, key=lambda e:
+                      (e["x"]-m["x"])**2 + (e["y"]-m["y"])**2)
+        locked = None
+        if self.combat_target_seat is not None:
+            locked = next((e for e in visible
+                           if e.get("seat") == self.combat_target_seat), None)
+        if locked is not None:
+            self.combat_target_seen_tick = tick
+            self.combat_last_target = dict(locked)
+            return locked, True
+        if (self.combat_last_target is not None
+                and tick - self.combat_target_seen_tick
+                <= COMBAT_MEMORY_TICKS):
+            last = self.combat_last_target
+            new_d = math.hypot(nearest["x"]-m["x"], nearest["y"]-m["y"])
+            old_d = math.hypot(last["x"]-m["x"], last["y"]-m["y"])
+            # Only drop the lock for a new enemy that is much closer and
+            # already in our face; a farther enemy appearing while the
+            # locked one peeks must not pull the crosshair away.
+            if new_d < 10.0 and new_d < old_d * 0.5:
+                self.combat_target_seat = nearest.get("seat")
+                self.combat_last_target = dict(nearest)
+                self.combat_target_seen_tick = tick
+                return nearest, True
+            return last, False
+        self.combat_target_seat = nearest.get("seat")
+        self.combat_last_target = dict(nearest)
+        self.combat_target_seen_tick = tick
+        return nearest, True
+
     def combat(self, o, action, gun):
         m = o["me"]
-        enemy = min(o["visible"], key=lambda e:
-                    (e["x"]-m["x"])**2 + (e["y"]-m["y"])**2)
+        enemy, target_visible = self._pick_target(o, m)
         dx, dy = enemy["x"]-m["x"], enemy["y"]-m["y"]
+        distance_xy = math.hypot(dx, dy)
+        parts = enemy.get("parts") or ()
+        head_visible = "head" in parts
+        mode = fire_mode(distance_xy, parts)
         heights = {"head": 1.64, "chest": 1.18, "abdomen": 0.88}
-        part = next((p for p in ("chest", "head", "abdomen")
-                     if p in enemy["parts"]), "chest")
+        if mode == "spray":
+            part = next((p for p in ("chest", "head", "abdomen")
+                         if p in parts), "chest")
+        else:
+            # Tap modes track the head and only fire when it is visible.
+            part = "head"
         height = heights[part] * (0.6 if enemy["crouch"] else 1.0)
+        # BRAKE: never pull the trigger while sliding on a step or airborne
+        # (76.5% standing-hit vs 17.5% running-hit in the advance-hold sample).
+        speed = m.get("speed")
+        if speed is None:
+            speed = math.hypot(m.get("vx", 0.0), m.get("vy", 0.0))
+        stable = (m.get("grounded", True)
+                  and float(speed) <= STOP_SPEED)
         eye = 0.95 if m["crouch"] else 1.62
         dz = enemy["z"] + height - m["z"] - eye
         punch = gun.get("aim_punch", {}) if gun else {}
         yaw = angle(math.atan2(-dy, dx) - m["yaw"]
                     - 2 * punch.get("yaw", 0.0))
-        pitch = math.atan2(dz, max(0.1, math.hypot(dx, dy)))
+        pitch = math.atan2(dz, max(0.1, distance_xy))
         pitch -= m["pitch"] + 2 * punch.get("pitch", 0.0)
         ready = bool(gun and gun["ammo"]
                      and not gun["reload_until"])
-        aligned = abs(yaw) < 0.04 and abs(pitch) < 0.04
+        align = SPRAY_ALIGN if mode == "spray" else TAP_ALIGN
+        aligned = abs(yaw) < align and abs(pitch) < align
         # Release the trigger between pistol shots.
         trigger = (action["weapon_slot"] == 0
                    or (o["match_tick"] // 3) % 4 == 0)
-        fire = ready and trigger and aligned
-        if ready and aligned:
-            crouch, strafe = True, 0.0
+        fire = ready and aligned and stable and target_visible
+        if mode in ("tap", "tap_long"):
+            interval = (TAP_INTERVAL_TICKS if mode == "tap"
+                        else LONG_TAP_INTERVAL_TICKS)
+            last = self.combat_tap_tick
+            cadence = (last is None
+                       or o["match_tick"] - last >= interval)
+            # Head or nothing: a body-only tap at range is wasted ammo.
+            fire = fire and cadence and head_visible
         else:
-            # Keep moving while the aim is converging instead of freezing.
-            crouch = False
-            direction = 1.0 if (o["match_tick"] // 30) % 2 == 0 else -1.0
-            strafe = COMBAT_STRAFE * direction
-        action.update(yaw_rate=clip(yaw / 0.15),
+            fire = fire and trigger
+        # Stop moving the moment an enemy is visible; the aim keeps
+        # converging and the trigger waits for the brake to finish.
+        action.update(move_forward=0.0, move_right=0.0,
+                      yaw_rate=clip(yaw / 0.15),
                       pitch_rate=clip(pitch / 0.1),
-                      crouch=crouch, move_right=strafe, fire=fire)
+                      # Do not toggle crouch in combat: `eye` changes with
+                      # m["crouch"], so crouch -> aim -> aligned -> stand
+                      # fed back into a 20 Hz stand/crouch twitch.
+                      crouch=False,
+                      walk=True, sprint=False, fire=fire)
+        action.pop("jump", None)
+        self.combat_hold = mode in ("tap", "tap_long")
         return action
 
+    def combat_wait(self, o, action, enemy):
+        """Hold the last fight's angle while ``visible`` flickers empty.
+
+        No trigger can be pulled: the enemy is not currently visible.
+        Keeping the combat state (and tap cadence) alive for a few ticks
+        stops the agent from resuming the recorded route between samples.
+        """
+        m = o["me"]
+        dx, dy = enemy["x"]-m["x"], enemy["y"]-m["y"]
+        distance_xy = math.hypot(dx, dy)
+        height = 1.64 * (0.6 if enemy.get("crouch") else 1.0)
+        eye = 0.95 if m["crouch"] else 1.62
+        dz = enemy["z"] + height - m["z"] - eye
+        yaw = angle(math.atan2(-dy, dx) - m["yaw"])
+        pitch = math.atan2(dz, max(0.1, distance_xy)) - m["pitch"]
+        action.update(move_forward=0.0, move_right=0.0,
+                      yaw_rate=clip(yaw / 0.15),
+                      pitch_rate=clip(pitch / 0.1),
+                      crouch=False, walk=True, sprint=False, fire=False)
+        action.pop("jump", None)
+        return action
+
+    def avoid_replay_block(self, o, replay_action, pos):
+        """Sidestep when recorded-route movement makes no progress.
+
+        Teammates have no position in the observation, so a teammate parked
+        on the recorded lane can only be detected as "moving input but no
+        displacement".  Take a short lateral step, alternating sides, and
+        abandon the recorded route for the round if it keeps failing.
+        """
+        tick = o["match_tick"]
+        if tick < self.replay_avoid_until:
+            replay_action.update(move_forward=0.0,
+                                 move_right=0.9 * self.replay_avoid_dir,
+                                 sprint=False, walk=False)
+            return replay_action
+        if self.replay_anchor_pos is None:
+            self.replay_anchor_pos = list(pos)
+            self.replay_anchor_tick = tick
+            return replay_action
+        if distance(pos, self.replay_anchor_pos) > 0.3:
+            self.replay_anchor_pos = list(pos)
+            self.replay_anchor_tick = tick
+            return replay_action
+        if replay_action.get("move_forward", 0.0) <= 0.2:
+            # Recorded aim pause, not a block: do not let the timer age.
+            self.replay_anchor_pos = list(pos)
+            self.replay_anchor_tick = tick
+            return replay_action
+        if tick - self.replay_anchor_tick >= REPLAY_BLOCK_TICKS:
+            self.replay_avoid_attempts += 1
+            if self.replay_avoid_attempts > REPLAY_AVOID_ATTEMPTS:
+                # A permanently parked teammate must not pin us for the
+                # whole round; fall back to A* (and the 40 s T spawn
+                # crutch once it applies).
+                self.replay_done = True
+                self.replay_abandoned = True
+                return replay_action
+            self.replay_avoid_dir = -self.replay_avoid_dir
+            self.replay_avoid_until = tick + REPLAY_AVOID_TICKS
+            self.replay_anchor_pos = list(pos)
+            self.replay_anchor_tick = tick
+            replay_action.update(move_forward=0.0,
+                                 move_right=0.9 * self.replay_avoid_dir,
+                                 sprint=False, walk=False)
+        return replay_action
+
     def combat_move(self, o, action, gun, goal):
-        """Keep aiming/firing while still making progress toward the path."""
+        """Keep aiming while advancing after a stalled fight.
+
+        The old implementation moved while leaving ``fire`` true, which is
+        how round 9 fired the rifle while sliding on the CT-spawn step.
+        Movement and fire are now mutually exclusive: this cooldown branch
+        always advances with the trigger released.
+        """
         m = o["me"]
         action = self.combat(o, action, gun)
         pos = [m["x"], m["y"], m["z"]]
@@ -829,7 +1147,8 @@ class Player:
         error = angle(math.atan2(-dy, dx) - m["yaw"])
         action.update(move_forward=0.35 * math.cos(error),
                       move_right=-0.35 * math.sin(error),
-                      crouch=False, walk=False, sprint=False)
+                      crouch=False, walk=False, sprint=False,
+                      fire=False)
         return action
 
     def move(self, o, goal, action, via=None, via_key=None, sprint=False,
@@ -1011,6 +1330,11 @@ class Player:
             self.wp_from_id = None
             self.last_position, self.stuck = None, 0
             self.blocked.clear()
+            # Learned collision penalties must not leak into the next
+            # round: a stale rear-route penalty selected the wedged
+            # warm_hall exit in R7/R9.  Permanent map hazards stay.
+            self.edge_penalty.clear()
+            self._apply_map_hazards()
             self.patrol_site, self.patrol_index = None, 0
             self.patrol_last_pos, self.patrol_still = None, 0
             self.attack_route_round = None
@@ -1025,14 +1349,15 @@ class Player:
             self.gate_ticks = 0
             self.carrier_site = None
             self.carrier_site_round = None
-            self.combat_start_tick = None
-            self.combat_last_fire_tick = None
-            self.combat_cooldown_until = 0
+            self._reset_combat_state()
+            self._reset_post_plant_state()
             self._reset_waypoint_progress()
             self.replay_round = o["round_index"]
             self.replay_cursor = 0
             self.replay_rejoin_index = None
             self.replay_done = False
+            self.replay_abandoned = False
+            self._reset_replay_avoid()
         m = o["me"]
         if not m["alive"] or o["phase"] not in ("buy", "live"):
             return {}
@@ -1048,11 +1373,10 @@ class Player:
         bomb = o["bomb"]
         planted = bomb.get("state") == "planted"
         visible_enemy = bool(o.get("visible")) and not m.get("blind_ticks")
-        replay_active = (
-            self.map_id == "dust2-cs2-v54"
-            and o.get("static_schema_hash") == (
-                "b0c308526d55e56e3a50a5ecf9bdd1b70a02daf560a9a8157931f3b340fb8d66")
-            and o["side"] == "attack" and not planted)
+        replay_route = (recorded_route(
+            self.map_id, o.get("static_schema_hash"))
+            if o["side"] == "attack" and not planted else None)
+        replay_active = replay_route is not None
         site = self.choose_site(o)
         site_id = site["id"]
         site_distance = distance(pos, site["center"])
@@ -1062,9 +1386,12 @@ class Player:
 
         # TEMPORARY fallback: see TEMP_T_CT_FALLBACK_TICKS.  It only applies
         # to T before a plant; once the bomb is down, normal retake/watch
-        # logic takes over.
+        # logic takes over.  The carrier is exempt: its highest-priority
+        # job is to reach the site and plant, not to visit CT spawn.
         ct_fallback = (
-            o["side"] == "attack" and not planted and not replay_active
+            o["side"] == "attack" and not planted
+            and (not replay_active or self.replay_abandoned)
+            and not m.get("carrying_bomb")
             and (o.get("round_tick") or 0) >= TEMP_T_CT_FALLBACK_TICKS
             and self.ct_spawn is not None)
 
@@ -1083,7 +1410,16 @@ class Player:
             if anchor is None:
                 anchor = self.generic_anchor(site)
 
-        if planted and bomb.get("position"):
+        post_plant_spot = post_plant_look = None
+        post_plant_at_stop = False
+        if planted and o["side"] == "attack":
+            (post_plant_spot, post_plant_look,
+             post_plant_at_stop) = self.post_plant_target(
+                o, site, bomb, pos, visible_enemy)
+
+        if planted and post_plant_spot is not None:
+            goal = list(post_plant_spot.stop)
+        elif planted and bomb.get("position"):
             goal = list(bomb["position"])
         elif ct_fallback:
             goal = list(self.ct_spawn)
@@ -1095,12 +1431,6 @@ class Player:
             goal = list(site["center"])
 
         via, via_key, patrol_active = [], None, False
-        watch = None
-        if planted and o["side"] == "attack":
-            watch = self.watch_point(
-                site_id, "attack", bomb.get("position") or pos)
-            if watch is not None:
-                goal = list(watch)
 
         patrol = []
         if (authored_patrol and not visible_enemy and near_site):
@@ -1173,40 +1503,48 @@ class Player:
                 return dict(action, use="plant")
 
         if visible_enemy:
+            self.combat_memory_until = tick + COMBAT_MEMORY_TICKS
             if replay_active:
                 action = self.combat(o, action, gun)
+                if action.get("fire"):
+                    self.combat_last_fire_tick = tick
+                    self.combat_tap_tick = tick
                 action.update(move_forward=0.0, move_right=0.0,
                               sprint=False, walk=True)
                 return action
             if tick < self.combat_cooldown_until:
-                # Keep aiming while advancing after a stalled fight.
-                action = self.combat_move(o, action, gun, goal)
-                if action.get("fire"):
-                    self.combat_last_fire_tick = tick
-                    self.combat_cooldown_until = 0
-                return action
+                # Keep aiming while advancing after a stalled fight; the
+                # trigger stays released while the feet are moving.
+                return self.combat_move(o, action, gun, goal)
             if self.combat_start_tick is None:
                 self.combat_start_tick = tick
                 self.combat_last_fire_tick = tick
             action = self.combat(o, action, gun)
             if action.get("fire"):
                 self.combat_last_fire_tick = tick
+                if self.combat_hold:
+                    self.combat_tap_tick = tick
             last_fire = (self.combat_last_fire_tick
                          if self.combat_last_fire_tick is not None
                          else tick)
             if tick - last_fire > COMBAT_TIMEOUT_TICKS:
                 self.combat_cooldown_until = (
                     tick + COMBAT_COOLDOWN_TICKS)
-                action = self.combat_move(o, action, gun, goal)
-                if action.get("fire"):
-                    self.combat_last_fire_tick = tick
-                    self.combat_cooldown_until = 0
-                return action
+                return self.combat_move(o, action, gun, goal)
             return action
+        elif (tick < self.combat_memory_until
+              and self.combat_last_target is not None):
+            return self.combat_wait(o, action, self.combat_last_target)
         else:
-            self.combat_start_tick = None
-            self.combat_last_fire_tick = None
-            self.combat_cooldown_until = 0
+            self._reset_combat_state()
+
+        if post_plant_at_stop and post_plant_look is not None:
+            # No spinning: stand on the cover spot and watch one entry at a
+            # time.  The cadence advances after the per-look dwell.
+            return self.hold_aim(
+                o, action,
+                (post_plant_look.aim[0], post_plant_look.aim[1],
+                 post_plant_look.aim_z))
 
         gate_info = self.crouch_gate(pos, goal)
         if gate_info is None and self.gate is not None:
@@ -1222,35 +1560,29 @@ class Player:
                 o, action, (anchor.aim[0], anchor.aim[1], anchor.aim_z))
 
         if replay_active and not self.replay_done:
-            from dust2_replay import ROUTE
             if self.replay_rejoin_index is not None:
-                rejoin = list(ROUTE[self.replay_rejoin_index][:3])
+                rejoin = list(replay_route[self.replay_rejoin_index][:3])
                 if distance(pos, rejoin) > 3.0:
                     return self.move(o, rejoin, action, sprint=True)
                 self.replay_rejoin_index = None
             cursor, replay_action = follow_trajectory(
-                ROUTE, self.replay_cursor, pos, m["yaw"], m["pitch"])
+                replay_route, self.replay_cursor, pos, m["yaw"], m["pitch"])
             self.replay_cursor = cursor
-            if (cursor >= len(ROUTE) - 80
-                    and distance(pos, ROUTE[-1][:3]) < 1.5):
+            if (cursor >= len(replay_route) - 80
+                    and distance(pos, replay_route[-1][:3]) < 1.5):
                 self.replay_done = True
-            if cursor < len(ROUTE) - 1:
+            if cursor < len(replay_route) - 1:
                 if not self.replay_done:
-                    rejoin = list(ROUTE[cursor][:3])
+                    rejoin = list(replay_route[cursor][:3])
                     if distance(pos, rejoin) > 6.0:
                         self.replay_rejoin_index = cursor
                         return self.move(o, rejoin, action, sprint=True)
+                    replay_action = self.avoid_replay_block(
+                        o, replay_action, pos)
                     return dict(action, **replay_action)
 
         if replay_active and self.replay_done:
             via, via_key = [], None
-
-        if planted and o["side"] == "attack":
-            hold_radius = 3.0 if watch is not None else 8.0
-            if distance(pos, goal) < hold_radius:
-                return dict(action, yaw_rate=0.15, walk=True,
-                            sprint=False, move_forward=0.0,
-                            move_right=0.0)
 
         sprint = (not visible_enemy and not patrol_active
                   and distance(pos, goal) > SPRINT_DISTANCE

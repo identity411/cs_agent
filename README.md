@@ -93,6 +93,8 @@ python3 .claude/skills/agx-submit/scripts/agx_submit.py submit --account account
 - v0.04 在 v0.03 之上加入 **post-v0.03 修正**：T 方 pre-plant patrol 振荡、dust2/Mirage 旧卡点 soft hazard（移到 `map_patches.py`）、前进跳 / 台阶跳、**临时 T 兜底（`round_tick>=40 s` 仍未下包就直接去 CT 出生点）**；已提交/激活，仍需新对局验证（`scripts/simulate_nav.py` 仅本地）。Mirage R6/R10 与 CT A 台阶证据见 [`docs/spec/11-12-mirage-spawn-jump.md`](docs/spec/11-12-mirage-spawn-jump.md)。
 - 2026-11-12 14:00 UTC v0.03 对局（Mirage，`d24bd037…`）：main seat 3（team 0，13–9 胜），account2 seat 9（team 1，9–13 负）；main CT 侧 R13/15/17/19/21 在 `(42.8,66.4)` 附近卡住，当前工作区已加 Mirage soft hazard，nav 模拟可绕开。
 - Dust2 T 方已接入用户录制的 2002 帧轨迹闭环跟随：按实时位置与准星纠偏，原地预瞄逐拍推进，可见敌人时停下交火，偏离路线时使用 A* 接回；仅在 Dust2 静态哈希匹配时启用。详见 [`1113-v0.06`](docs/submissions/1113-v0.06/README.md)；当前全量测试 59/59 通过，正式对局效果仍待验证。
+- 2026-11-13 开火距离分层：只有近距（≤ Mirage A 中央→警家 32.5 m）且身体可见才扫射；中距只点头、每 42 ticks（0.7 s）点一发；超过 1.5×（48.75 m）仍只点头，但降为每 60 ticks（1 s）一发。见 [`docs/spec/11-13-fire-range-bands.md`](docs/spec/11-13-fire-range-bands.md)；本地 82/82 测试通过，待新对局验证。
+- 2026-11-13 战斗稳定性：18-tick 战斗记忆桥接可见性闪烁、目标锁防止 25 m/48 m 目标来回跳、战斗不再蹲起；录制轨迹 20 ticks 无进度即侧移绕开卡住的队友，连续失败后放弃路线回退 A*。见 [`docs/spec/11-13-combat-stability.md`](docs/spec/11-13-combat-stability.md)；本地 86/86 测试通过。
 
 ## 文档
 
@@ -109,6 +111,8 @@ python3 .claude/skills/agx-submit/scripts/agx_submit.py submit --account account
 - [`docs/spec/11-12-mirage-spawn-jump.md`](docs/spec/11-12-mirage-spawn-jump.md)：Mirage R6/R10 出生点滑动卡住、CT A 台阶与前进跳修复
 - [`docs/spec/11-12-economy-rotation-combat.md`](docs/spec/11-12-economy-rotation-combat.md)：v0.01 对局的 5 类非卡住 badcase（经济 / 转点 / 走路 / 蹲射 / 换弹）
 - [`docs/spec/11-12-match-observability.md`](docs/spec/11-12-match-observability.md)：对局可观测性指标（参战 / 命中 / 卡死 / 回防）与版本对比判定
+- [`docs/spec/11-13-fire-range-bands.md`](docs/spec/11-13-fire-range-bands.md)：开火距离分层（近距扫射 / 中距只点头点射 0.7 s / 远距只点头点射 1 s）
+- [`docs/spec/11-13-combat-stability.md`](docs/spec/11-13-combat-stability.md)：可见性闪烁下的战斗记忆 / 目标锁 / 不蹲起，录制路线被队友堵住的侧移与放弃
 
 ## 提交状态
 
@@ -120,4 +124,7 @@ python3 .claude/skills/agx-submit/scripts/agx_submit.py submit --account account
 - 2026-11-12 15:31 UTC：`1112-v0.04`（前进跳 / 台阶跳 / `map_patches.py` / Mirage / T 方兜底）提交到 `main` 和 `account2`；admission 均 `passed`，`main` version `4`、`account2` version `3` 已激活。详见 [`docs/submissions/1112-v0.04/README.md`](docs/submissions/1112-v0.04/README.md)；本地 53/53 测试通过，待新对局验证。
 - 2026-11-13 00:14 CST：Dust2 录制轨迹跟随修正版 [`1113-v0.06`](docs/submissions/1113-v0.06/README.md) 仅提交到 `account2`；admission `passed`，account2 version `5` 已激活，`main` 仍为 version `4`。本地全量测试 59/59 通过。
 - v0.01–v0.02 的状态只跟踪 `main` 账户；v0.03–v0.06 记录 `main` 和 `account2`。其他账户用 `accounts --check`、`collect` 或批量提交的 `--receipt-out` 查看。
+- 2026-11-13：`1113-v0.08`（R9 刹停/点射、带包人 40 s 兜底豁免、Mirage A/B 守包 spot/look、nevaio `warm_hall` hazard + 回合清 edge penalty）提交到 `main` 和 `account2`；admission 均 `passed`，`main` version `5`、`account2` version `7` 已激活，entry code hash `4f12f28d10b7`。详见 [`docs/submissions/1113-v0.08/README.md`](docs/submissions/1113-v0.08/README.md)、[`11-13-nevaio-r9-fire-discipline.md`](docs/spec/11-13-nevaio-r9-fire-discipline.md) 与 [`11-13-post-plant-holds.md`](docs/spec/11-13-post-plant-holds.md)；本地 75/75 测试通过，待新对局验证。
+- 2026-11-13：`1113-v0.10`（开火距离分层：近距扫射 / 中距只点头 0.7 s / 远距只点头 1 s，同时把 main 更新到含 v0.09 Mirage 轨迹的代码）提交到 `main` 和 `account2`；admission 均 `passed`，`main` version `6`、`account2` version `9` 已激活，entry code hash `09a4bfac4aaa`。详见 [`docs/submissions/1113-v0.10/README.md`](docs/submissions/1113-v0.10/README.md) 与 [`11-13-fire-range-bands.md`](docs/spec/11-13-fire-range-bands.md)；本地 82/82 测试通过，待新对局验证。
+- 2026-11-13：`1113-v0.11`（18-tick 战斗记忆 / 目标锁 / 不蹲起；录制路线被队友堵住时侧移，连续失败放弃路线回退 A*）提交到 `main` 和 `account2`；admission 均 `passed`，`main` version `7`、`account2` version `10` 已激活，entry code hash `a77f1c7e5b22`。详见 [`docs/submissions/1113-v0.11/README.md`](docs/submissions/1113-v0.11/README.md) 与 [`11-13-combat-stability.md`](docs/spec/11-13-combat-stability.md)；本地 86/86 测试通过，待新对局验证。
 - 上传 / 准入 / 激活成功不代表完整对局、比分或排名。

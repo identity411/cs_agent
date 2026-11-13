@@ -66,14 +66,52 @@ class AdvanceAnchor:
         self.hold = hold
 
 
+class PlantLook:
+    """One aim direction at a post-plant hold spot.
+
+    Unlike ``AdvancePoint`` / ``AdvanceAnchor``, ``aim[2]`` here is already
+    the absolute aim height (normally floor + head height).  Do not add
+    ``HEAD_HEIGHT`` a second time.
+    """
+
+    __slots__ = ("aim", "aim_z", "dwell_ticks")
+
+    def __init__(self, aim, aim_z=None, dwell_ticks=180):
+        self.aim = tuple(float(value) for value in aim)
+        self.aim_z = float(self.aim[2] if aim_z is None else aim_z)
+        self.dwell_ticks = int(dwell_ticks)
+
+
+class PlantSpot:
+    """A cover spot plus the entry angles watched from it."""
+
+    __slots__ = ("stop", "looks")
+
+    def __init__(self, stop, looks):
+        self.stop = tuple(float(value) for value in stop)
+        self.looks = tuple(looks)
+
+
+class PlantHold:
+    """Post-plant watch plan: a small loop over cover spots."""
+
+    __slots__ = ("name", "site", "spots")
+
+    def __init__(self, name, site, spots):
+        self.name = name
+        self.site = site
+        self.spots = tuple(spots)
+
+
 class AdvanceMap:
-    """Lanes and anchors for one map id."""
+    """Lanes, anchors and post-plant holds for one map id."""
 
-    __slots__ = ("lanes", "anchors")
+    __slots__ = ("lanes", "anchors", "plant_holds")
 
-    def __init__(self, lanes=None, anchors=None):
+    def __init__(self, lanes=None, anchors=None, plant_holds=None):
         self.lanes = dict(lanes or {})
         self.anchors = dict(anchors or {})
+        self.plant_holds = dict(plant_holds or {})
 
     def lane(self, side, site, name):
         return self.lanes.get((side, site, name))
@@ -85,6 +123,9 @@ class AdvanceMap:
 
     def anchor(self, side, site):
         return self.anchors.get((side, site))
+
+    def plant_hold(self, site):
+        return self.plant_holds.get(site)
 
 
 EMPTY = AdvanceMap()
@@ -140,6 +181,31 @@ MIRAGE = AdvanceMap(
         # do not turn into the boxes with the back to the T approach.
         ("defend", "A"): AdvanceAnchor(
             (51.5, 87.3, 15.55), (52.0, 99.0, 15.43)),
+    },
+    plant_holds={
+        # A: hold beside the A-site boxes.  The three looks are the CT
+        # spawn retake lane, jungle, and the arch.  Positions are sampled
+        # from match 125a716a (plants/holds) plus nearby public nav nodes;
+        # validate collision/LOS in the next live round.
+        "A": PlantHold("A_boxes", "A", (
+            PlantSpot((48.6, 89.8, 15.43), (
+                PlantLook((51.4, 52.9, 14.7)),    # CT spawn / 警家
+                PlantLook((62.3, 75.5, 17.5)),    # jungle
+                PlantLook((55.6, 79.5, 17.9)),    # arch
+            )),
+        )),
+        # B: wait at the sofa, then a small loop to the B-short cover and
+        # back.  The sofa look covers market; the short spot re-checks the
+        # market/B-short approach from the west side of the site.
+        "B": PlantHold("B_sofa_loop", "B", (
+            PlantSpot((109.4, 54.1, 15.7), (
+                PlantLook((98.0, 66.0, 17.5)),    # market
+                PlantLook((94.0, 51.0, 17.5)),    # B short
+            )),
+            PlantSpot((98.6, 50.5, 15.8), (
+                PlantLook((98.0, 66.0, 17.5)),    # market from B short
+            )),
+        )),
     },
 )
 
