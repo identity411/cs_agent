@@ -30,7 +30,8 @@ class R3ReplayTests(unittest.TestCase):
                         {"tick": tick,
                          "position": [center[0] - 20 + tick * 0.1,
                                       center[1], center[2]],
-                         "yaw": 0.0, "pitch": 0.0, "keys": ["KeyW"]}
+                         "yaw": 0.0, "pitch": 0.0,
+                         "keys": ["KeyW", "Space"] if tick == 1 else ["KeyW"]}
                         for tick in range(120)
                     ],
                 }))
@@ -40,6 +41,7 @@ class R3ReplayTests(unittest.TestCase):
                 self.assertIn(f"MAP_HASH = {fixture['map']['geometry_hash']!r}",
                               output.read_text())
                 self.assertIn(f"SITE = {site!r}", output.read_text())
+                self.assertIn(", 33),", output.read_text())
 
     def test_recorded_routes_match_only_their_map_hash(self):
         for name, site in SOURCES.items():

@@ -1,5 +1,9 @@
-export function createRecording({mapId, mapHash, hz}) {
-  return {format: 'walklab-v2', mapId, mapHash, hz, frames: []};
+export function createRecording({mapId, mapHash, hz, side, purpose, originSite,
+  targetSite, start}) {
+  return {format: 'walklab-v2', mapId, mapHash, hz,
+    ...(side && {side}), ...(purpose && {purpose}),
+    ...(originSite && {originSite}), ...(targetSite && {targetSite}),
+    ...(start && {start}), frames: []};
 }
 
 export function appendFrame(recording, frame) {
@@ -24,6 +28,21 @@ export function validateRecording(recording) {
       (recording.format === 'dust2-walk-v1' && recording.mapId !== 'dust2-cs2-v54') ||
       !Array.isArray(recording.frames)) {
     throw new Error('unsupported recording format');
+  }
+  if (recording.side && !['attack', 'defend'].includes(recording.side)) {
+    throw new Error('invalid side');
+  }
+  if (recording.purpose === 'retake' &&
+      (recording.side !== 'defend' || !['A', 'B'].includes(recording.originSite) ||
+       !['A', 'B'].includes(recording.targetSite) ||
+       recording.originSite === recording.targetSite)) {
+    throw new Error('invalid retake direction');
+  }
+  if (recording.start && (!Array.isArray(recording.start.position) ||
+      recording.start.position.length !== 3 ||
+      !recording.start.position.every(Number.isFinite) ||
+      !Number.isFinite(recording.start.yaw))) {
+    throw new Error('invalid start');
   }
   for (let i = 0; i < recording.frames.length; i++) {
     const frame = recording.frames[i];

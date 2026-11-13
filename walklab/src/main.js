@@ -6,6 +6,8 @@ import {parseAwpyMesh} from './mesh.js';
 import {buildStructureGeometry} from './structure.js';
 import {appendFrame, applyMouseLook, cameraYaw, createRecording, movementVector,
   sampleFrame, validateRecording} from './recording.js';
+import {advanceJump, chooseStart, groundProbeHeight, nearestNavStart,
+  retakeStart, spawnChoices} from './setup.js';
 import './style.css';
 
 let selectedMap = MAPS[0];
@@ -28,6 +30,8 @@ sun.position.set(80, 150, 45);
 scene.add(sun);
 const camera = new THREE.PerspectiveCamera(78, 1, 0.05, 600);
 camera.rotation.order = 'YXZ';
+const pickCamera = new THREE.OrthographicCamera(-50, 50, 50, -50, 0.1, 1000);
+pickCamera.up.set(0, 0, -1);
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
@@ -37,7 +41,15 @@ raycaster.firstHitOnly = true;
 
 let mapObjects = new THREE.Group();
 scene.add(mapObjects);
-let start = map.spawns.T[0];
+let side = 'attack';
+let start = chooseStart(map, 'T:0');
+let purpose = null;
+let originSite = null;
+let targetSite = null;
+let pickingStart = false;
+let jumpState = {height: start.position[2], velocity: 0, grounded: true};
+let lastFloorHeight = start.position[2];
+let jumpQueued = false;
 const pose = {position: [...start.position], yaw: start.yaw, pitch: 0};
 const keys = new Set();
 let mouse = [0, 0];
@@ -54,10 +66,16 @@ let lastPointer = null;
 const routePoints = [];
 const routeLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color: 0xd94e38, linewidth: 2}));
 scene.add(routeLine);
+const startMarker = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.08, 18),
+  new THREE.MeshBasicMaterial({color: 0xf3cf69, depthTest: false}));
+startMarker.renderOrder = 2;
+scene.add(startMarker);
 
 const ui = Object.fromEntries(['record', 'play', 'export', 'timeline', 'time', 'mode', 'position',
   'angles', 'frames', 'inputs', 'path-summary', 'view-status', 'asset-note', 'click-prompt',
-  'model-file', 'recording-file', 'rerecord', 'map-select', 'map-id'].map(id => [id, document.getElementById(id)]));
+  'model-file', 'recording-file', 'rerecord', 'map-select', 'map-id', 'side-t', 'side-ct',
+  'start-select', 'pick-start', 'use-position', 'retake-a-b', 'retake-b-a',
+  'side-label', 'start-label', 'purpose-label'].map(id => [id, document.getElementById(id)]));
 
 function buildMapVisuals() {
   const nodeById = new Map(map.nav.nodes.map(node => [node.id, node.position]));
@@ -98,9 +116,77 @@ function nearestHeight(x, y) {
   return height;
 }
 
+function updateStartDisplay() {
+  ui['side-t'].classList.toggle('selected', side === 'attack');
+  ui['side-ct'].classList.toggle('selected', side === 'defend');
+  ui['side-t'].setAttribute('aria-pressed', String(side === 'attack'));
+  ui['side-ct'].setAttribute('aria-pressed', String(side === 'defend'));
+  ui['side-label'].textContent = side === 'attack' ? 'T' : 'CT';
+  ui['start-label'].textContent = start.label || '自选点位';
+  ui['purpose-label'].textContent = purpose === 'retake'
+    ? `${originSite} → ${targetSite} 回防` : '普通路线';
+  startMarker.position.set(start.position[0], start.position[2] + 0.05, start.position[1]);
+}
+
+function setStart(choice, nextSide = choice.side || side) {
+  side = nextSide;
+  start = {...choice, position: [...choice.position]};
+  purpose = null; originSite = null; targetSite = null;
+  pose.position = [...start.position]; pose.yaw = start.yaw; pose.pitch = 0;
+  jumpState = {height: pose.position[2], velocity: 0, grounded: true};
+  lastFloorHeight = pose.position[2];
+  jumpQueued = false;
+  keys.clear();
+  recording = null; tick = 0; playIndex = 0;
+  routePoints.length = 0; updateTrail();
+  ui.timeline.value = '0'; ui.timeline.max = '0';
+  pickingStart = false;
+  ui['pick-start'].classList.remove('active');
+  if (ui['start-select'].querySelector(`option[value="${choice.id}"]`)) {
+    ui['start-select'].value = choice.id;
+  } else {
+    ui['start-select'].value = 'custom';
+  }
+  updateStartDisplay();
+  setMode('idle');
+}
+
+function fillStarts() {
+  ui['start-select'].replaceChildren();
+  for (const choice of spawnChoices(map)) {
+    const option = document.createElement('option');
+    option.value = choice.id;
+    option.textContent = choice.label;
+    ui['start-select'].append(option);
+  }
+  const custom = document.createElement('option');
+  custom.value = 'custom'; custom.textContent = '自选点位'; custom.disabled = true;
+  ui['start-select'].append(custom);
+}
+
 function applyPose() {
   camera.position.set(pose.position[0], pose.position[2] + 1.62, pose.position[1]);
   camera.rotation.set(pose.pitch, cameraYaw(pose.yaw), 0);
+}
+
+function framePickCamera() {
+  const positions = map.nav.nodes.map(node => node.position);
+  const xs = positions.map(point => point[0]);
+  const ys = positions.map(point => point[1]);
+  const zs = positions.map(point => point[2]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const centerX = (minX + maxX) / 2, centerY = (minY + maxY) / 2;
+  const aspect = viewport.clientWidth / viewport.clientHeight;
+  const halfHeight = Math.max((maxY - minY) * 0.56, (maxX - minX) * 0.56 / aspect);
+  pickCamera.left = -halfHeight * aspect;
+  pickCamera.right = halfHeight * aspect;
+  pickCamera.top = halfHeight;
+  pickCamera.bottom = -halfHeight;
+  pickCamera.position.set(centerX, Math.max(...zs) + 200, centerY);
+  pickCamera.lookAt(centerX, Math.min(...zs), centerY);
+  pickCamera.updateProjectionMatrix();
+  pickCamera.updateMatrixWorld();
 }
 
 function collisionDistance(origin, direction, far) {
@@ -120,22 +206,32 @@ function move() {
   const r = movementVector('KeyD', pose.yaw);
   const x = (forward * f[0] + right * r[0]) / length;
   const y = (forward * f[1] + right * r[1]) / length;
-  const deltaX = x * speed * dt, deltaY = y * speed * dt;
+  let deltaX = x * speed * dt, deltaY = y * speed * dt;
   const lengthXY = Math.hypot(deltaX, deltaY);
   if (collisionMesh && lengthXY) {
     const direction = new THREE.Vector3(deltaX / lengthXY, 0, deltaY / lengthXY);
     const origin = new THREE.Vector3(pose.position[0], pose.position[2] + 0.9, pose.position[1]);
-    if (collisionDistance(origin, direction, lengthXY + 0.35)) return;
+    if (collisionDistance(origin, direction, lengthXY + 0.35)) {
+      deltaX = 0; deltaY = 0;
+    }
   }
-  const nextX = pose.position[0] + deltaX, nextY = pose.position[1] + deltaY;
+  let nextX = pose.position[0] + deltaX, nextY = pose.position[1] + deltaY;
+  let groundHeight = pose.position[2];
   if (collisionMesh) {
-    const ground = collisionDistance(new THREE.Vector3(nextX, pose.position[2] + 0.55, nextY),
-      new THREE.Vector3(0, -1, 0), 2.0);
-    if (!ground || ground.point.y < pose.position[2] - 1.0) return;
-    pose.position[2] = ground.point.y;
+    const ground = collisionDistance(new THREE.Vector3(nextX,
+      groundProbeHeight(lastFloorHeight), nextY), new THREE.Vector3(0, -1, 0), 2.0);
+    if (ground && ground.point.y >= lastFloorHeight - 1.0) {
+      groundHeight = ground.point.y;
+    } else {
+      nextX = pose.position[0]; nextY = pose.position[1];
+    }
   } else {
-    pose.position[2] = nearestHeight(nextX, nextY);
+    groundHeight = nearestHeight(nextX, nextY);
   }
+  jumpState = advanceJump(jumpState, jumpQueued, groundHeight, dt);
+  if (jumpState.grounded) lastFloorHeight = groundHeight;
+  jumpQueued = false;
+  pose.position[2] = jumpState.height;
   pose.position[0] = nextX;
   pose.position[1] = nextY;
 }
@@ -152,11 +248,18 @@ function setMode(next) {
 }
 
 function startFreshRecording() {
+  pickingStart = false;
+  ui['pick-start'].classList.remove('active');
   pose.position = [...start.position];
   pose.yaw = start.yaw;
   pose.pitch = 0;
+  jumpState = {height: start.position[2], velocity: 0, grounded: true};
+  lastFloorHeight = start.position[2];
+  jumpQueued = false;
   keys.clear();
-  recording = createRecording({mapId: map.id, mapHash: map.geometry_hash, hz});
+  recording = createRecording({mapId: map.id, mapHash: map.geometry_hash, hz,
+    side, purpose, originSite, targetSite,
+    start: {position: [...start.position], yaw: start.yaw, source: start.id}});
   recording.assetName = modelName;
   tick = 0; playIndex = 0; routePoints.length = 0; updateTrail();
   setMode('recording');
@@ -194,7 +297,8 @@ function step() {
   if (mode === 'playing') {
     if (playIndex >= recording.frames.length) { setMode('paused'); return; }
     applyRecordedFrame(sampleFrame(recording, playIndex++));
-  } else if (mode === 'recording' || pointerInside || document.pointerLockElement === renderer.domElement) {
+  } else if (!pickingStart && (mode === 'recording' || pointerInside ||
+      document.pointerLockElement === renderer.domElement)) {
     move();
     if (mode === 'recording') {
       appendFrame(recording, {tick: tick++, keys: [...keys], mouse,
@@ -218,7 +322,7 @@ function animate(now) {
   previousTime = now;
   while (accumulator >= dt) { step(); accumulator -= dt; }
   applyPose();
-  renderer.render(scene, camera);
+  renderer.render(scene, pickingStart ? pickCamera : camera);
   requestAnimationFrame(animate);
 }
 
@@ -228,6 +332,32 @@ ui.record.onclick = () => {
 };
 ui['map-select'].onchange = () => selectMap(ui['map-select'].value);
 ui.rerecord.onclick = startFreshRecording;
+ui['side-t'].onclick = () => setStart(chooseStart(map, 'T:0'), 'attack');
+ui['side-ct'].onclick = () => setStart(chooseStart(map, 'CT:0'), 'defend');
+ui['start-select'].onchange = () => setStart(chooseStart(map, ui['start-select'].value));
+ui['use-position'].onclick = () => setStart({id: 'custom', label: '当前位置',
+  position: [...pose.position], yaw: pose.yaw});
+ui['pick-start'].onclick = () => {
+  pickingStart = !pickingStart;
+  ui['pick-start'].classList.toggle('active', pickingStart);
+  if (pickingStart) {
+    if (mode === 'recording') setMode('paused');
+    document.exitPointerLock?.();
+    framePickCamera();
+    ui['click-prompt'].textContent = '俯视图中点击位置，自动贴近可走点';
+  } else {
+    ui['click-prompt'].textContent = '移动鼠标转视角 · 双击锁定鼠标';
+  }
+};
+for (const [id, origin, target] of [['retake-a-b', 'A', 'B'],
+  ['retake-b-a', 'B', 'A']]) {
+  ui[id].onclick = () => {
+    setStart(retakeStart(map, origin, target), 'defend');
+    purpose = 'retake'; originSite = origin; targetSite = target;
+    updateStartDisplay();
+    startFreshRecording();
+  };
+}
 ui.play.onclick = () => {
   if (mode === 'playing') { setMode('paused'); return; }
   if (playIndex >= recording.frames.length) playIndex = 0;
@@ -256,6 +386,17 @@ ui['recording-file'].onchange = async event => {
     const target = mapForRecording(loaded);
     if (!target) throw new Error('地图版本不匹配');
     if (target !== selectedMap) await selectMap(target.key);
+    side = loaded.side || 'attack';
+    purpose = loaded.purpose || null;
+    originSite = loaded.originSite || null;
+    targetSite = loaded.targetSite || null;
+    start = loaded.start ? {...loaded.start, id: loaded.start.source,
+      label: loaded.start.source === 'custom' ? '自选点位' : loaded.start.source}
+      : {id: 'custom', label: '导入记录起点',
+        position: [...loaded.frames[0].position], yaw: loaded.frames[0].yaw};
+    ui['start-select'].value = ui['start-select'].querySelector(`option[value="${start.id}"]`)
+      ? start.id : 'custom';
+    updateStartDisplay();
     recording = loaded; playIndex = 0; tick = loaded.frames.length;
     routePoints.length = 0;
     for (const frame of loaded.frames) routePoints.push(new THREE.Vector3(frame.position[0], frame.position[2] + 0.12, frame.position[1]));
@@ -284,16 +425,31 @@ renderer.domElement.addEventListener('mouseleave', () => {
   lastPointer = null;
 });
 renderer.domElement.addEventListener('dblclick', () => {
-  requestMouseLock();
+  if (!pickingStart) requestMouseLock();
+});
+renderer.domElement.addEventListener('click', event => {
+  if (!pickingStart) return;
+  const bounds = renderer.domElement.getBoundingClientRect();
+  const pointer = new THREE.Vector2(
+    ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+    -((event.clientY - bounds.top) / bounds.height) * 2 + 1);
+  raycaster.setFromCamera(pointer, pickCamera);
+  const point = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+    new THREE.Vector3());
+  if (!point) return;
+  setStart({...nearestNavStart(map, point.x, point.z), yaw: pose.yaw});
 });
 document.addEventListener('keydown', event => {
+  if (event.target instanceof HTMLInputElement ||
+      event.target instanceof HTMLSelectElement) return;
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'Space'].includes(event.code)) {
+    if (event.code === 'Space' && !keys.has('Space')) jumpQueued = true;
     keys.add(event.code); event.preventDefault();
   }
 });
 document.addEventListener('keyup', event => keys.delete(event.code));
 document.addEventListener('mousemove', event => {
-  if (mode === 'playing') return;
+  if (mode === 'playing' || pickingStart) return;
   const locked = document.pointerLockElement === renderer.domElement;
   if (!locked && event.target !== renderer.domElement) {
     lastPointer = null;
@@ -310,12 +466,13 @@ document.addEventListener('pointerlockchange', () => {
   ui['click-prompt'].textContent = document.pointerLockElement === renderer.domElement
     ? '' : '移动鼠标转视角 · 双击锁定鼠标';
 });
-window.addEventListener('blur', () => keys.clear());
+window.addEventListener('blur', () => { keys.clear(); jumpQueued = false; });
 new ResizeObserver(() => {
   const width = viewport.clientWidth, height = viewport.clientHeight;
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
   renderer.setSize(width, height);
+  if (pickingStart) framePickCamera();
 }).observe(viewport);
 setMode('idle');
 requestAnimationFrame(animate);
@@ -329,8 +486,13 @@ async function selectMap(key) {
   keys.clear(); pointerInside = false; lastPointer = null;
   selectedMap = entry;
   map = entry.staticMap.map;
-  start = map.spawns.T[0];
+  side = 'attack';
+  start = chooseStart(map, 'T:0');
+  purpose = null; originSite = null; targetSite = null;
   pose.position = [...start.position]; pose.yaw = start.yaw; pose.pitch = 0;
+  jumpState = {height: pose.position[2], velocity: 0, grounded: true};
+  lastFloorHeight = pose.position[2];
+  jumpQueued = false; pickingStart = false;
   scene.remove(mapObjects);
   mapObjects.traverse(object => {
     object.geometry?.dispose();
@@ -346,12 +508,18 @@ async function selectMap(key) {
   ui.timeline.value = '0'; ui.timeline.max = '0'; ui.inputs.textContent = '-';
   ui['map-id'].textContent = map.id;
   ui['map-select'].value = key;
+  fillStarts();
+  ui['start-select'].value = 'T:0';
+  updateStartDisplay();
   const url = new URL(location.href);
   url.searchParams.set('map', key);
   history.replaceState(null, '', url);
   document.title = `${entry.name} 走图录制`;
   buildMapVisuals();
   setMode('idle');
+  ui['retake-a-b'].disabled = true;
+  ui['retake-b-a'].disabled = true;
+  ui['pick-start'].disabled = true;
   if (!entry.mesh) {
     collisionMesh = buildStructureGeometry(map);
     mapObjects.add(collisionMesh);
@@ -361,6 +529,9 @@ async function selectMap(key) {
     updateTrail();
     ui.record.disabled = false;
     ui.rerecord.disabled = false;
+    ui['retake-a-b'].disabled = false;
+    ui['retake-b-a'].disabled = false;
+    ui['pick-start'].disabled = false;
     return;
   }
   ui.record.disabled = true;
@@ -386,6 +557,9 @@ async function selectMap(key) {
     updateTrail();
     ui.record.disabled = false;
     ui.rerecord.disabled = false;
+    ui['retake-a-b'].disabled = false;
+    ui['retake-b-a'].disabled = false;
+    ui['pick-start'].disabled = false;
   } catch {
     if (version === mapLoadVersion) {
       ui['view-status'].textContent = '平台导航数据预览 · 未加载 3D 几何';

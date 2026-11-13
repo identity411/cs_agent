@@ -9,7 +9,14 @@
   <div id="app">
     <header class="toolbar">
       <div class="brand"><strong>走图录制</strong><select id="map-select" aria-label="选择地图"><option value="dust2">Dust2</option><option value="mirage">Mirage</option><option value="borgo">Borgo</option><option value="molo">Molo</option><option value="nevaio">Nevaio</option></select></div>
+      <div class="setup-controls">
+        <div class="side-control" role="group" aria-label="录制阵营"><button id="side-t" class="selected" type="button" aria-pressed="true">T</button><button id="side-ct" type="button" aria-pressed="false">CT</button></div>
+        <select id="start-select" aria-label="选择录制起点"></select>
+        <button id="pick-start" type="button">点选起点</button>
+        <button id="use-position" type="button">当前位置</button>
+      </div>
       <div class="commands">
+        <div class="retake-control" role="group" aria-label="一键录制回防"><button id="retake-a-b" type="button">A → B 回防</button><button id="retake-b-a" type="button">B → A 回防</button></div>
         <label class="file-command">导入 GLB / glTF<input id="model-file" type="file" accept=".glb,.gltf" /></label>
         <button id="record" type="button">开始录制</button>
         <button id="rerecord" type="button">重新录制</button>
@@ -29,6 +36,9 @@
         <dl>
           <dt>模式</dt><dd id="mode">待机</dd>
           <dt>地图</dt><dd id="map-id">-</dd>
+          <dt>阵营</dt><dd id="side-label">T</dd>
+          <dt>起点</dt><dd id="start-label">-</dd>
+          <dt>用途</dt><dd id="purpose-label">普通路线</dd>
           <dt>位置</dt><dd id="position">-</dd>
           <dt>视角</dt><dd id="angles">-</dd>
           <dt>采样</dt><dd id="frames">0 帧</dd>
@@ -43,7 +53,7 @@
         <p id="asset-note">当前仅显示公开导航节点。导入对应版本的真实 3D 模型后可查看几何；位置移动仍需平台碰撞网格才能严格复现。</p>
       </aside>
     </main>
-    <footer>W A S D 移动 · 移动鼠标转视角 · 双击锁定鼠标 · Shift 加速 · Esc 退出锁定</footer>
+    <footer>W A S D 移动 · Space 跳跃 · 鼠标转视角 · 双击锁定鼠标 · Shift 加速 · Esc 退出锁定</footer>
   </div>
   <script type="module" src="/src/main.js"></script>
 </body>

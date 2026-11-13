@@ -1,6 +1,7 @@
 """Rule-based player: public map, combat and bomb objectives."""
 import heapq
 import math
+import sys
 
 import advance_holds
 import map_patches
@@ -41,6 +42,34 @@ def recorded_route(map_id, geometry_hash):
 def recorded_site(map_id, geometry_hash):
     info = recorded_route_info(map_id, geometry_hash)
     return info[1] if info else None
+
+
+def recorded_route_options(map_id, geometry_hash):
+    """Attack route candidates admitted for this exact static map."""
+    info = recorded_route_info(map_id, geometry_hash)
+    if info is None:
+        return ()
+    options = [{"name": "legacy", "frames": info[0],
+                "site": info[1], "carrier_cutoff": info[2]}]
+    if map_id == "dust2-cs2-v54":
+        from dust2_b_replay import (MAP_HASH, ROUTE, SITE, CARRIER_CUTOFF)
+        if geometry_hash == MAP_HASH:
+            options.append({"name": "B_site_20261113", "frames": ROUTE,
+                            "site": SITE, "carrier_cutoff": CARRIER_CUTOFF})
+    return tuple(options)
+
+
+# T-side recorded-route rotation, from docs/spec/11-13-t-route-rotation.md.
+# A route that the seat dies on while its team loses the round gets its
+# weight multiplied down; the next round deterministically prefers the
+# highest-weight route.  A successful route restores its weight and stays
+# selected until it fails again.
+ROUTE_WEIGHT_INITIAL = 1.0
+ROUTE_WEIGHT_FAILURE = 0.5
+ROUTE_WEIGHT_SUCCESS_GAIN = 0.5
+ROUTE_WEIGHT_MIN = 0.1
+ROUTE_WEIGHT_EPS = 1e-9
+ROUTE_LOG_ENABLED = True
 
 # Navigation tolerances.  The waypoint radius is deliberately larger than
 # 1 m: a 1 m radius makes the agent turn back to a node it has just passed
@@ -97,14 +126,13 @@ COMBAT_COOLDOWN_TICKS = 60     # move-only window after a stalled combat
 # pull the trigger while sliding on a step or while airborne.
 STOP_SPEED = 1.0
 # Fire discipline from docs/spec/11-13-fire-range-bands.md.  Spray only
-# inside the close band, otherwise tap the head: 0.7 s per shot up to 1.5x
-# the close band, 1 s per shot beyond it.  The close band is the measured
-# Mirage A site centre -> CT spawn distance: A (44.67, 88.18) to the mean
-# CT spawn pad (51.80, 56.41) is 32.56 m.
+# inside the close band, otherwise tap the head once per 0.6 s: the mid
+# band runs to 1.5x the close band and the long band beyond it.  The close
+# band is the measured Mirage A site centre -> CT spawn distance:
+# A (44.67, 88.18) to the mean CT spawn pad (51.80, 56.41) is 32.56 m.
 SPRAY_RANGE = 32.5             # ~Mirage A site centre -> CT spawn (32.6 m)
-TAP_RANGE = 1.5 * SPRAY_RANGE  # 48.75 m; slower taps beyond this
-TAP_INTERVAL_TICKS = 42        # 0.7 s at 60 Hz
-LONG_TAP_INTERVAL_TICKS = 60   # 1.0 s at 60 Hz
+TAP_RANGE = 1.5 * SPRAY_RANGE  # 48.75 m; beyond this the long tap band
+TAP_INTERVAL_TICKS = 36        # 0.6 s at 60 Hz (12 decisions at 20 Hz)
 TAP_ALIGN = 0.02               # ~1.1 degrees for a head tap
 SPRAY_ALIGN = 0.04             # ~2.3 degrees for a close spray
 # A partially occluded enemy makes `visible` flicker at the 20 Hz decision
@@ -142,8 +170,8 @@ def fire_mode(distance_xy, parts):
     """Pick the trigger band for a visible enemy.
 
     ``spray``: inside the Mirage A->CT-spawn band with a body part visible.
-    ``tap``: up to 1.5x that band; head only, one shot per 0.7 s.
-    ``tap_long``: beyond 1.5x; still head only, one shot per 1 s.
+    ``tap``: up to 1.5x that band; head only, one shot per 0.6 s.
+    ``tap_long``: beyond 1.5x; still head only, same 0.6 s cadence.
     """
     parts = parts or ()
     body = any(part in parts for part in ("chest", "abdomen"))
@@ -221,6 +249,7 @@ def follow_trajectory(frames, cursor, pos, yaw, pitch):
         "yaw_rate": clip(yaw_error / 0.15),
         "pitch_rate": clip(pitch_error / 0.1),
         "sprint": sprint,
+        "jump": bool(mask & 32),
         "walk": False,
         "crouch": False,
     }
@@ -268,12 +297,14 @@ class Player:
         self.gate_disabled_round = None
         self.map_id = None
         self.replay_round = None
+        self.selected_replay = None
         self.replay_cursor = 0
         self.replay_rejoin_index = None
         self.replay_done = False
         self.replay_abandoned = False
         self._reset_replay_avoid()
         self._reset_retake()
+        self._reset_route_memory()
 
     @staticmethod
     def _first_spawn(row, side, pad_side):
@@ -385,6 +416,183 @@ class Player:
         self.retake_done = False
         self.retake_anchor_pos = None
         self.retake_anchor_tick = 0
+
+    def _reset_route_memory(self):
+        self.route_memory_key = None
+        self.route_scores = {}
+        self.route_success = None
+        self.route_last = None
+        self.route_last_failed = False
+        self._reset_route_round()
+
+    def _reset_route_round(self, o=None):
+        self.route_attempt = None
+        self.route_site = None
+        self.route_started = False
+        self.route_reached = False
+        self.route_death_pending = False
+        self.route_start_wins = None
+        self.route_start_team = None
+        if o is not None:
+            wins = o.get("round_wins")
+            if isinstance(wins, (list, tuple)) and len(wins) == 2:
+                self.route_start_wins = [wins[0], wins[1]]
+            self.route_start_team = o.get("team")
+
+    @staticmethod
+    def _team_score(wins, team):
+        """Public score for ``team``, or None when the field is unusable."""
+        if not isinstance(wins, (list, tuple)) or len(wins) != 2:
+            return None
+        if not isinstance(team, int) or team not in (0, 1):
+            return None
+        try:
+            return int(wins[team])
+        except (TypeError, ValueError):
+            return None
+
+    def _route_score(self, name):
+        return self.route_scores.get(name, ROUTE_WEIGHT_INITIAL)
+
+    def _sync_route_memory(self, o):
+        """Keep route weights per static map; a new map starts fresh."""
+        key = (self.map_id, o.get("static_schema_hash"))
+        if key == self.route_memory_key:
+            return
+        self.route_memory_key = key
+        self.route_scores = {}
+        self.route_success = None
+        self.route_last = None
+        self.route_last_failed = False
+        self._reset_route_round()
+        for option in recorded_route_options(
+                self.map_id, o.get("static_schema_hash")):
+            self.route_scores[option["name"]] = ROUTE_WEIGHT_INITIAL
+
+    def _select_recorded_route(self, o, pos, site_id):
+        """Pick this round's route: success first, then highest weight.
+
+        The choice is deterministic.  On a weight tie the route that was
+        already running is kept; after a failure the cyclic walk moves to
+        the next eligible route, so the failed lane is skipped.  When no
+        route has run yet, keep the recorded start-position preference and
+        the original round tie-break.
+        """
+        options = [option for option in recorded_route_options(
+            self.map_id, o.get("static_schema_hash"))
+            if option["site"] in (None, site_id)]
+        if not options:
+            return None
+        by_name = {option["name"]: option for option in options}
+        if self.route_success in by_name:
+            return by_name[self.route_success]
+        best = max(self._route_score(option["name"]) for option in options)
+        top = [option for option in options
+               if self._route_score(option["name"])
+               >= best - ROUTE_WEIGHT_EPS]
+        top_names = {option["name"] for option in top}
+        if self.route_last in top_names and not self.route_last_failed:
+            return by_name[self.route_last]
+        all_names = [option["name"] for option in recorded_route_options(
+            self.map_id, o.get("static_schema_hash"))]
+        if self.route_last in all_names:
+            start = all_names.index(self.route_last) + 1
+            for name in all_names[start:] + all_names[:start]:
+                if name in top_names:
+                    return by_name[name]
+        top.sort(key=lambda option: distance(pos, option["frames"][0][:3]))
+        closest = distance(pos, top[0]["frames"][0][:3])
+        tied = [option for option in top if distance(
+            pos, option["frames"][0][:3]) <= closest + 0.5]
+        # Keep the pre-rotation tie-break so the initial round is unchanged.
+        index = (o.get("round_index", 0) + 1) % len(tied)
+        return tied[index]
+
+    def _note_route_start(self, o, route_name, replay_active, planted):
+        if (not replay_active or self.route_started
+                or o.get("side") != "attack" or planted
+                or route_name is None):
+            return
+        self.route_started = True
+        self.route_attempt = route_name
+        self.route_last = route_name
+        self.route_last_failed = False
+
+    def _note_route_success(self, o, alive, planted, plant_site=None):
+        """Record reaching the route end or planting while still alive."""
+        if (not self.route_started or self.route_reached
+                or self.route_attempt is None or not alive
+                or self.route_death_pending or o.get("side") != "attack"):
+            return
+        # A plant elsewhere is the team's success, not this route's.
+        if (planted and self.route_site is not None
+                and plant_site is not None and plant_site != self.route_site):
+            planted = False
+        if not (planted
+                or (self.replay_done and not self.replay_abandoned)):
+            return
+        self.route_reached = True
+        self.route_success = self.route_attempt
+        self.route_last = self.route_attempt
+        self.route_last_failed = False
+        score = min(ROUTE_WEIGHT_INITIAL,
+                    self._route_score(self.route_attempt)
+                    + ROUTE_WEIGHT_SUCCESS_GAIN)
+        self.route_scores[self.route_attempt] = score
+        self._route_log(o, self.route_attempt, "success", score)
+
+    def _note_route_death(self, o, alive, planted):
+        """Flag the first death on a route; the round result settles later."""
+        if (alive or self.route_death_pending or not self.route_started
+                or self.route_reached or planted
+                or o.get("side") != "attack"):
+            return
+        self.route_death_pending = True
+
+    def _finalize_route_round(self, o):
+        """Settle the previous round's route before its state is cleared."""
+        if not self.route_started or self.route_attempt is None:
+            self._reset_route_round()
+            return
+        name = self.route_attempt
+        result = "neutral"
+        if self.route_reached:
+            result = "success"
+            self.route_last_failed = False
+        elif self.route_death_pending:
+            before = self._team_score(
+                self.route_start_wins, self.route_start_team)
+            after = self._team_score(o.get("round_wins"), o.get("team"))
+            if before is not None and after is not None and after == before:
+                result = "death"
+                self.route_scores[name] = max(
+                    ROUTE_WEIGHT_MIN,
+                    self._route_score(name) * ROUTE_WEIGHT_FAILURE)
+                if self.route_success == name:
+                    self.route_success = None
+                self.route_last = name
+                self.route_last_failed = True
+            else:
+                self.route_last_failed = False
+        else:
+            self.route_last_failed = False
+        if result != "success":
+            self._route_log(o, name, result,
+                            self._route_score(name), round_index=self.round)
+        self._reset_route_round()
+
+    def _route_log(self, o, name, result, weight, round_index=None):
+        # Single-route maps have nothing to rotate; keep stderr quiet.
+        if not ROUTE_LOG_ENABLED or len(self.route_scores) <= 1:
+            return
+        try:
+            round_value = (o.get("round_index")
+                           if round_index is None else round_index)
+            print(f"route map={self.map_id} seat={o.get('seat')} "
+                  f"round={round_value} exec={name} result={result} "
+                  f"weight={weight:.2f}", file=sys.stderr)
+        except Exception:
+            pass
 
     def choose_retake(self, o, pos, target_site):
         if self.retake_checked:
@@ -527,16 +735,21 @@ class Player:
             self.edge_penalty[key] *= EDGE_PENALTY_DECAY
 
     def _advance_waypoint(self):
-        """Skip a waypoint that cannot be reached; keep the rest of the path."""
+        """Skip a waypoint that cannot be reached and re-plan the route.
+
+        Keeping the rest of the old path can hand the agent a straight
+        segment that cuts through collision: in the 2026-11-13 molo R2,
+        skipping the congested spawn waypoint left the diagonal from the
+        CT spawn straight at the office wall, and the agent wedged there
+        for the rest of the round.  Clear the path so ``route`` plans from
+        the current position with the skipped point blocked.
+        """
         current_id = self.path_ids[0] if self.path_ids else None
         self._penalize_edge(self.wp_from_id, current_id)
-        if len(self.path) > 1:
-            self.blocked.add(tuple(self.path.pop(0)))
-            if self.path_ids:
-                self.wp_from_id = self.path_ids.pop(0)
-        else:
-            self.path, self.path_ids = [], []
-            self.wp_from_id = None
+        if self.path:
+            self.blocked.add(tuple(self.path[0]))
+        self.path, self.path_ids = [], []
+        self.wp_from_id = None
         self.stuck = 0
         self._reset_waypoint_progress()
 
@@ -1193,16 +1406,15 @@ class Player:
         trigger = (action["weapon_slot"] == 0
                    or (o["match_tick"] // 3) % 4 == 0)
         fire = ready and aligned and stable and target_visible
-        if mode in ("tap", "tap_long"):
-            interval = (TAP_INTERVAL_TICKS if mode == "tap"
-                        else LONG_TAP_INTERVAL_TICKS)
+        if mode == "spray":
+            fire = fire and trigger
+        else:
+            # Both tap bands: head only, one shot per 0.6 s.
             last = self.combat_tap_tick
             cadence = (last is None
-                       or o["match_tick"] - last >= interval)
+                       or o["match_tick"] - last >= TAP_INTERVAL_TICKS)
             # Head or nothing: a body-only tap at range is wasted ammo.
             fire = fire and cadence and head_visible
-        else:
-            fire = fire and trigger
         # Stop moving the moment an enemy is visible; the aim keeps
         # converging and the trigger waits for the brake to finish.
         action.update(move_forward=0.0, move_right=0.0,
@@ -1438,8 +1650,12 @@ class Player:
             forward = 0.0
         strafe = -scale * math.sin(error)
         moving = abs(forward) > 0.1 or abs(strafe) > 0.2
+        # Horizontal displacement only.  Jump recovery changes z every
+        # tick; counting that as movement let a wedged agent jump in place
+        # for a whole round (2026-11-13 molo R2) because `stuck` never
+        # accumulated and the back-off recovery never ran.
         moved = (self.last_position is None
-                 or distance(pos, self.last_position) > 0.01)
+                 or distance(pos[:2], self.last_position[:2]) > 0.01)
         if not aligned:
             # Turning in place is intentional; do not fire the unstick
             # recovery and interrupt the turn.  The jump check also requires
@@ -1510,7 +1726,9 @@ class Player:
     def act(self, o):
         if "map" in o:
             self.load_map(o["map"])
+        self._sync_route_memory(o)
         if self.round != o["round_index"]:
+            self._finalize_route_round(o)
             self.round = o["round_index"]
             self.path, self.path_ids, self.goal = [], [], None
             self.via_key = None
@@ -1540,13 +1758,23 @@ class Player:
             self._reset_post_plant_state()
             self._reset_waypoint_progress()
             self.replay_round = o["round_index"]
+            self.selected_replay = None
             self.replay_cursor = 0
             self.replay_rejoin_index = None
             self.replay_done = False
             self.replay_abandoned = False
             self._reset_replay_avoid()
             self._reset_retake()
+            self._reset_route_round(o)
         m = o["me"]
+        bomb = o.get("bomb") or {}
+        planted = bomb.get("state") == "planted"
+        # Success must be seen before death, and both before the dead/phase
+        # early return below.  Only death timing is available here; the
+        # round result is settled at the next round boundary.
+        self._note_route_success(o, bool(m.get("alive")), planted,
+                                 bomb.get("site"))
+        self._note_route_death(o, bool(m.get("alive")), planted)
         if not m["alive"] or o["phase"] not in ("buy", "live"):
             return {}
         if o["phase"] == "buy":
@@ -1558,14 +1786,15 @@ class Player:
             action["reload"] = True
         pos = [m["x"], m["y"], m["z"]]
         tick = o["match_tick"]
-        bomb = o["bomb"]
-        planted = bomb.get("state") == "planted"
         visible_enemy = bool(o.get("visible")) and not m.get("blind_ticks")
-        replay_info = (recorded_route_info(
-            self.map_id, o.get("static_schema_hash"))
-            if o["side"] == "attack" and not planted else None)
         site = self.choose_site(o)
         site_id = site["id"]
+        if o["side"] == "attack" and not planted and self.selected_replay is None:
+            self.selected_replay = self._select_recorded_route(
+                o, pos, site_id)
+            if self.selected_replay is not None:
+                self.route_site = self.selected_replay.get("site")
+        replay_info = self.selected_replay if o["side"] == "attack" and not planted else None
         defend_hold_spot = defend_hold_look = None
         defend_hold_at_stop = False
         if o["side"] == "defend" and not planted:
@@ -1576,13 +1805,13 @@ class Player:
             self.choose_retake(o, pos, site)
         retake_active = self.retake_route is not None and not self.retake_done
         carrying = bool(m.get("carrying_bomb"))
-        replay_route = replay_info[0] if replay_info else None
+        replay_route = replay_info["frames"] if replay_info else None
         carrier_cutoff = None
         if replay_info and carrying:
-            if replay_info[1] is not None and replay_info[1] != site_id:
+            if replay_info["site"] is not None and replay_info["site"] != site_id:
                 replay_route = None
-            elif replay_info[1] is not None:
-                carrier_cutoff = replay_info[2]
+            elif replay_info["site"] is not None:
+                carrier_cutoff = replay_info["carrier_cutoff"]
                 replay_route = replay_route[:carrier_cutoff + 1]
         replay_active = replay_route is not None
         site_distance = distance(pos, site["center"])
@@ -1591,6 +1820,12 @@ class Player:
             self.replay_done = True
             self.replay_abandoned = False
             self.replay_rejoin_index = None
+        self._note_route_start(
+            o, replay_info["name"] if replay_info else None,
+            replay_active, planted)
+        # A carrier may hand off to A* (replay_done) on this same tick.
+        self._note_route_success(o, bool(m.get("alive")), planted,
+                                 bomb.get("site"))
         near_site = site_distance <= (
             site["radius"] + PATROL_NEAR_SITE_PAD)
         route_near = site_distance <= site["radius"]

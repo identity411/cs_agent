@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 
 KEY_BITS = {"KeyW": 1, "KeyA": 2, "KeyS": 4, "KeyD": 8,
-            "ShiftLeft": 16}
+            "ShiftLeft": 16, "Space": 32}
 CARRIER_HANDOFF_DISTANCE = 12.0
 
 

@@ -10,10 +10,18 @@ button.active { background: #b5483c; border-color: #d36355; }
 .file-command { display: inline-flex; align-items: center; }
 .file-command input { display: none; }
 #app { height: 100vh; min-height: 440px; display: flex; flex-direction: column; }
-.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 10px 16px; border-bottom: 1px solid #3a4147; background: #232a2e; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; padding: 10px 16px; border-bottom: 1px solid #3a4147; background: #232a2e; }
 .brand { display: flex; gap: 8px; align-items: baseline; white-space: nowrap; }
 .brand strong { font-size: 20px; color: #e7bd68; }
 .brand span { font-size: 13px; color: #b6c0c6; }
+.setup-controls, .retake-control, .side-control { display: flex; align-items: center; gap: 6px; }
+.setup-controls { flex-wrap: wrap; }
+.side-control { gap: 0; }
+.side-control button { min-width: 38px; padding: 0 8px; }
+.side-control button + button { border-left: 0; }
+.side-control .selected { background: #327966; border-color: #64b59b; }
+#start-select { max-width: 170px; }
+.retake-control button { border-color: #756847; color: #f4d999; }
 .commands { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
 main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0,1fr) 266px; }
 #viewport { position: relative; overflow: hidden; background: #94abb6; cursor: crosshair; }

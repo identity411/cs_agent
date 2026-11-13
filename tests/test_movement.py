@@ -101,6 +101,34 @@ STEP_MAP = {
     },
 }
 
+# Two CT->B lanes, mirroring molo's spawn congestion in the 2026-11-13 R2.
+# The direct service_east lane is marginally shorter, so A* selects it
+# first; when it is skipped, the old code kept the diagonal through the
+# office wall instead of the valid office_stair lane.
+SKIP_REPLAN_MAP = {
+    "sites": [{"id": "B", "center": [10.0, -20.0, 0.0], "radius": 4.0}],
+    "nav": {
+        "nodes": [
+            {"id": "ct", "position": [0.0, 0.0, 0.0]},
+            {"id": "service_east", "position": [10.0, 0.0, 0.0]},
+            {"id": "office_stair", "position": [2.0, -12.0, 0.0]},
+            {"id": "office_door", "position": [10.0, -10.0, 0.0]},
+            {"id": "B", "position": [10.0, -20.0, 0.0]},
+        ],
+        "edges": [
+            {"from": "ct", "to": "service_east", "kind": "walk"},
+            {"from": "service_east", "to": "office_door", "kind": "walk"},
+            {"from": "office_door", "to": "B", "kind": "walk"},
+            {"from": "ct", "to": "office_stair", "kind": "walk"},
+            {"from": "office_stair", "to": "office_door", "kind": "walk"},
+        ],
+    },
+    "spawns": {
+        "T": [{"position": [0.0, 0.0, 0.0]}],
+        "CT": [{"position": [0.0, 0.0, 0.0]}],
+    },
+}
+
 # T-side temporary fallback target: after 40 s without a plant, T walks to
 # the CT spawn instead of staying pinned in its own spawn area.
 T_FALLBACK_MAP = {
@@ -343,6 +371,30 @@ def observation(x, y, yaw, *, round_index=7, tick=37800, match_map=MAP,
     }
 
 
+def combat_fire_series(x, *, steps=45, primary=True):
+    """Drive one stationary head-only target; return fire ticks and actions."""
+    agent.init({})
+    obs = observation(0.0, 0.0, 0.0, round_index=0, tick=0,
+                      match_map=OPEN_MAP, seat=0)
+    obs["visible"] = [{
+        "seat": 5, "team": 1, "x": x, "y": 0.0, "z": -0.02,
+        "yaw": 0.0, "pitch": 0.0, "crouch": False,
+        "lean": 0.0, "parts": ["head"], "weapon": "ak47",
+    }]
+    obs["me"]["speed"] = 0.0
+    if not primary:
+        obs["me"]["weapons"][0] = None
+    fires, actions = [], []
+    for step in range(steps):
+        if step:
+            obs.pop("map", None)
+        obs["match_tick"] = step * 3
+        action = agent.act(obs)
+        fires.append(bool(action.get("fire")))
+        actions.append(action)
+    return [step * 3 for step, fired in enumerate(fires) if fired], actions
+
+
 class NavigationRegression(unittest.TestCase):
     def setUp(self):
         agent.init({})
@@ -463,6 +515,44 @@ class NavigationRegression(unittest.TestCase):
         self.assertNotEqual(tuple(agent._player.path[0]), (118.0, 22.0, 0.0))
         self.assertTrue(any(value > 0
                             for value in agent._player.edge_penalty.values()))
+
+    def test_jump_in_place_still_backs_off(self):
+        # 2026-11-13 molo R2: seat 3 wedged at (119.3, 81.7), pressed into
+        # the office wall and jumped in place for 88 s (139 jumps, 94% of
+        # frames airborne).  The z churn counted as "moved", so `stuck`
+        # never accumulated and the back-off recovery never ran.
+        obs = observation(1.0, 0.0, 0.0, round_index=0, tick=400,
+                          match_map=OPEN_MAP, seat=0)
+        backoff = None
+        for step in range(45):
+            if step:
+                obs.pop("map", None)
+            obs["match_tick"] = 400 + step * 3
+            obs["me"]["z"] = 1.2 if step % 2 else 0.0
+            obs["me"]["grounded"] = step % 2 == 0
+            action = agent.act(obs)
+            if (action.get("move_forward", 0.0) < 0.0
+                    and abs(action.get("move_right", 0.0)) >= 0.5):
+                backoff = action
+                break
+        self.assertIsNotNone(backoff)
+        self.assertIs(backoff["walk"], True)
+
+    def test_skipped_waypoint_replans_along_nav_graph(self):
+        # In molo R2 the congested spawn waypoint was skipped and the old
+        # code kept the remaining lane, which handed the agent a straight
+        # line through the office wall.  Re-plan from the current position
+        # with the skipped node blocked instead.
+        agent.init({})
+        obs = observation(1.8, 0.0, 0.0, round_index=0, tick=400,
+                          match_map=SKIP_REPLAN_MAP, seat=0)
+        player = agent._player
+        player.load_map(SKIP_REPLAN_MAP)
+        for step in range(70):
+            obs["match_tick"] = 400 + step * 3
+            player.move(obs, [10.0, -20.0, 0.0], {"weapon_slot": 0})
+        self.assertIn((10.0, 0.0, 0.0), player.blocked)
+        self.assertEqual(tuple(player.path[0]), (2.0, -12.0, 0.0))
 
     def test_site_center_uses_patrol_waypoints(self):
         # 2026-11-12 R2: seat 3 stood on B center with speed ~1.4 but no
@@ -906,7 +996,7 @@ class NavigationRegression(unittest.TestCase):
 
     def test_fire_bands_follow_mirage_a_to_ct_spawn(self):
         # The close band is the measured Mirage A site centre -> CT spawn
-        # distance (32.56 m); tap runs to 1.5x that, then the trigger holds.
+        # distance (32.56 m); tap runs to 1.5x that, then the long band.
         self.assertAlmostEqual(agent.SPRAY_RANGE, 32.5, places=1)
         self.assertAlmostEqual(agent.TAP_RANGE, 48.75, places=2)
         self.assertEqual(agent.fire_mode(10.0, ["chest"]), "spray")
@@ -921,30 +1011,13 @@ class NavigationRegression(unittest.TestCase):
         # A head-only target inside the close band is tapped, not sprayed.
         self.assertEqual(agent.fire_mode(10.0, ["head"]), "tap")
 
-    def test_mid_range_taps_head_on_a_0_7_second_cadence(self):
-        obs = observation(0.0, 0.0, 0.0, round_index=0, tick=0,
-                          match_map=OPEN_MAP, seat=0)
-        obs["visible"] = [{
-            "seat": 5, "team": 1, "x": 40.0, "y": 0.0, "z": -0.02,
-            "yaw": 0.0, "pitch": 0.0, "crouch": False,
-            "lean": 0.0, "parts": ["head"], "weapon": "ak47",
-        }]
-        obs["me"]["speed"] = 0.0
-        fires = []
-        for step in range(40):
-            if step:
-                obs.pop("map", None)
-            obs["match_tick"] = step * 3
-            action = agent.act(obs)
+    def test_mid_range_taps_head_on_a_0_6_second_cadence(self):
+        ticks, actions = combat_fire_series(40.0)
+        self.assertEqual(ticks, [0, 36, 72, 108])
+        for action in actions:
             self.assertEqual(action.get("move_forward", 0.0), 0.0)
             self.assertEqual(action.get("move_right", 0.0), 0.0)
-            fires.append(bool(action.get("fire")))
-        self.assertGreaterEqual(sum(fires), 2)
-        self.assertIn(False, fires)
-        fire_ticks = [i * 3 for i, fired in enumerate(fires) if fired]
-        for earlier, later in zip(fire_ticks, fire_ticks[1:]):
-            self.assertGreaterEqual(later - earlier, agent.TAP_INTERVAL_TICKS)
-        self.assertEqual(agent.TAP_INTERVAL_TICKS, 42)  # 0.7 s at 60 Hz
+        self.assertEqual(agent.TAP_INTERVAL_TICKS, 36)  # 0.6 s at 60 Hz
 
     def test_body_only_target_never_fires_outside_spray_band(self):
         # "只点头": chest/abdomen visible but no head -> no shot at range.
@@ -964,31 +1037,17 @@ class NavigationRegression(unittest.TestCase):
                 obs["match_tick"] = step * 3
                 self.assertFalse(agent.act(obs).get("fire"))
 
-    def test_beyond_1_5x_spray_range_taps_head_once_per_second(self):
-        obs = observation(0.0, 0.0, 0.0, round_index=0, tick=0,
-                          match_map=OPEN_MAP, seat=0)
-        obs["visible"] = [{
-            "seat": 5, "team": 1, "x": 50.0, "y": 0.0, "z": -0.02,
-            "yaw": 0.0, "pitch": 0.0, "crouch": False,
-            "lean": 0.0, "parts": ["head"], "weapon": "ak47",
-        }]
-        obs["me"]["speed"] = 0.0
-        fires = []
-        for step in range(50):
-            if step:
-                obs.pop("map", None)
-            obs["match_tick"] = step * 3
-            action = agent.act(obs)
+    def test_long_range_taps_head_on_the_same_0_6_second_cadence(self):
+        self.assertEqual(agent.fire_mode(50.0, ["head"]), "tap_long")
+        ticks, actions = combat_fire_series(50.0)
+        self.assertEqual(ticks, [0, 36, 72, 108])
+        for action in actions:
             self.assertEqual(action.get("move_forward", 0.0), 0.0)
             self.assertEqual(action.get("move_right", 0.0), 0.0)
-            fires.append(bool(action.get("fire")))
-        self.assertGreaterEqual(sum(fires), 2)
-        self.assertFalse(all(fires))
-        fire_ticks = [i * 3 for i, fired in enumerate(fires) if fired]
-        for earlier, later in zip(fire_ticks, fire_ticks[1:]):
-            self.assertGreaterEqual(later - earlier,
-                                    agent.LONG_TAP_INTERVAL_TICKS)
-        self.assertEqual(agent.LONG_TAP_INTERVAL_TICKS, 60)  # 1 s at 60 Hz
+
+    def test_pistol_taps_head_on_the_same_0_6_second_cadence(self):
+        ticks, _ = combat_fire_series(40.0, steps=45, primary=False)
+        self.assertEqual(ticks, [0, 36, 72, 108])
 
     def test_close_body_sprays_inside_the_band(self):
         obs = observation(0.0, 0.0, 0.0, round_index=0, tick=0,
