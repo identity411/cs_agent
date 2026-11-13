@@ -1,7 +1,8 @@
 :root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #e7eaed; background: #181c20; font-synthesis: none; }
 * { box-sizing: border-box; }
 body { margin: 0; }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
+select { height: 34px; border: 1px solid #545d64; background: #30383e; color: #f2f3f4; padding: 0 9px; }
 button, .file-command { height: 34px; border: 1px solid #545d64; background: #30383e; color: #f2f3f4; padding: 0 12px; cursor: pointer; white-space: nowrap; }
 button:hover, .file-command:hover { background: #435058; }
 button:disabled { opacity: .42; cursor: default; }

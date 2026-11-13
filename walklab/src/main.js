@@ -1,13 +1,15 @@
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {acceleratedRaycast, computeBoundsTree, disposeBoundsTree} from 'three-mesh-bvh';
-import staticMap from '../../tests/fixtures/dust2_static.json';
+import {MAPS, mapForRecording} from './maps.js';
 import {parseAwpyMesh} from './mesh.js';
+import {buildStructureGeometry} from './structure.js';
 import {appendFrame, applyMouseLook, cameraYaw, createRecording, movementVector,
   sampleFrame, validateRecording} from './recording.js';
 import './style.css';
 
-const map = staticMap.map;
+let selectedMap = MAPS[0];
+let map = selectedMap.staticMap.map;
 const hz = 20;
 const dt = 1 / hz;
 const viewport = document.querySelector('#viewport');
@@ -33,34 +35,9 @@ let collisionMesh = null;
 const raycaster = new THREE.Raycaster();
 raycaster.firstHitOnly = true;
 
-const nodeById = new Map(map.nav.nodes.map(node => [node.id, node.position]));
-const navPositions = new Float32Array(map.nav.nodes.length * 3);
-for (let i = 0; i < map.nav.nodes.length; i++) {
-  const p = map.nav.nodes[i].position;
-  navPositions.set([p[0], p[2] + 0.03, p[1]], i * 3);
-}
-const dots = new THREE.BufferGeometry();
-dots.setAttribute('position', new THREE.BufferAttribute(navPositions, 3));
-scene.add(new THREE.Points(dots, new THREE.PointsMaterial({color: 0x226b58, size: 0.42, sizeAttenuation: true})));
-const lines = [];
-for (const edge of map.nav.edges) {
-  const a = nodeById.get(edge.from), b = nodeById.get(edge.to);
-  if (a && b) lines.push(a[0], a[2] + 0.02, a[1], b[0], b[2] + 0.02, b[1]);
-}
-const lineGeo = new THREE.BufferGeometry();
-lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
-scene.add(new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({color: 0x62887a, transparent: true, opacity: 0.24})));
-
-for (const site of map.sites) {
-  const p = site.center;
-  const ring = new THREE.Mesh(new THREE.RingGeometry(site.radius - 0.13, site.radius, 60),
-    new THREE.MeshBasicMaterial({color: site.id === 'A' ? 0xc75e42 : 0xe0b857, side: THREE.DoubleSide}));
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.set(p[0], p[2] + 0.08, p[1]);
-  scene.add(ring);
-}
-
-const start = map.spawns.T[0];
+let mapObjects = new THREE.Group();
+scene.add(mapObjects);
+let start = map.spawns.T[0];
 const pose = {position: [...start.position], yaw: start.yaw, pitch: 0};
 const keys = new Set();
 let mouse = [0, 0];
@@ -80,7 +57,36 @@ scene.add(routeLine);
 
 const ui = Object.fromEntries(['record', 'play', 'export', 'timeline', 'time', 'mode', 'position',
   'angles', 'frames', 'inputs', 'path-summary', 'view-status', 'asset-note', 'click-prompt',
-  'model-file', 'recording-file', 'rerecord'].map(id => [id, document.getElementById(id)]));
+  'model-file', 'recording-file', 'rerecord', 'map-select', 'map-id'].map(id => [id, document.getElementById(id)]));
+
+function buildMapVisuals() {
+  const nodeById = new Map(map.nav.nodes.map(node => [node.id, node.position]));
+  const positions = new Float32Array(map.nav.nodes.length * 3);
+  for (let i = 0; i < map.nav.nodes.length; i++) {
+    const p = map.nav.nodes[i].position;
+    positions.set([p[0], p[2] + 0.03, p[1]], i * 3);
+  }
+  const dots = new THREE.BufferGeometry();
+  dots.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  mapObjects.add(new THREE.Points(dots, new THREE.PointsMaterial({color: 0x226b58, size: 0.42})));
+  const lines = [];
+  for (const edge of map.nav.edges) {
+    const a = nodeById.get(edge.from), b = nodeById.get(edge.to);
+    if (a && b) lines.push(a[0], a[2] + 0.02, a[1], b[0], b[2] + 0.02, b[1]);
+  }
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
+  mapObjects.add(new THREE.LineSegments(lineGeo,
+    new THREE.LineBasicMaterial({color: 0x62887a, transparent: true, opacity: 0.24})));
+  for (const site of map.sites) {
+    const p = site.center;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(site.radius - 0.13, site.radius, 60),
+      new THREE.MeshBasicMaterial({color: site.id === 'A' ? 0xc75e42 : 0xe0b857, side: THREE.DoubleSide}));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(p[0], p[2] + 0.08, p[1]);
+    mapObjects.add(ring);
+  }
+}
 
 function nearestHeight(x, y) {
   let best = Infinity, height = pose.position[2];
@@ -101,7 +107,7 @@ function collisionDistance(origin, direction, far) {
   if (!collisionMesh) return null;
   raycaster.set(origin, direction);
   raycaster.far = far;
-  const hit = raycaster.intersectObject(collisionMesh, false)[0];
+  const hit = raycaster.intersectObject(collisionMesh, true)[0];
   return hit || null;
 }
 
@@ -220,6 +226,7 @@ ui.record.onclick = () => {
   if (mode === 'recording') { setMode('paused'); updateTrail(); return; }
   startFreshRecording();
 };
+ui['map-select'].onchange = () => selectMap(ui['map-select'].value);
 ui.rerecord.onclick = startFreshRecording;
 ui.play.onclick = () => {
   if (mode === 'playing') { setMode('paused'); return; }
@@ -231,7 +238,7 @@ ui.export.onclick = () => {
   const blob = new Blob([JSON.stringify(recording, null, 2)], {type: 'application/json'});
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `dust2-walk-${new Date().toISOString().replaceAll(':', '-')}.json`;
+  link.download = `${selectedMap.key}-walk-${new Date().toISOString().replaceAll(':', '-')}.json`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 };
@@ -246,7 +253,9 @@ ui['recording-file'].onchange = async event => {
   try {
     const loaded = JSON.parse(await file.text());
     validateRecording(loaded);
-    if (loaded.mapId !== map.id || loaded.mapHash !== map.geometry_hash) throw new Error('地图版本不匹配');
+    const target = mapForRecording(loaded);
+    if (!target) throw new Error('地图版本不匹配');
+    if (target !== selectedMap) await selectMap(target.key);
     recording = loaded; playIndex = 0; tick = loaded.frames.length;
     routePoints.length = 0;
     for (const frame of loaded.frames) routePoints.push(new THREE.Vector3(frame.position[0], frame.position[2] + 0.12, frame.position[1]));
@@ -311,11 +320,57 @@ new ResizeObserver(() => {
 setMode('idle');
 requestAnimationFrame(animate);
 
-async function loadDefaultMesh() {
+let mapLoadVersion = 0;
+async function selectMap(key) {
+  const entry = MAPS.find(item => item.key === key);
+  if (!entry) return;
+  const version = ++mapLoadVersion;
+  document.exitPointerLock?.();
+  keys.clear(); pointerInside = false; lastPointer = null;
+  selectedMap = entry;
+  map = entry.staticMap.map;
+  start = map.spawns.T[0];
+  pose.position = [...start.position]; pose.yaw = start.yaw; pose.pitch = 0;
+  scene.remove(mapObjects);
+  mapObjects.traverse(object => {
+    object.geometry?.dispose();
+    if (Array.isArray(object.material)) object.material.forEach(material => material.dispose());
+    else object.material?.dispose();
+  });
+  mapObjects = new THREE.Group();
+  scene.add(mapObjects);
+  collisionMesh = null;
+  if (loadedModel) { scene.remove(loadedModel); loadedModel = null; }
+  modelName = null; recording = null; tick = 0; playIndex = 0;
+  routePoints.length = 0; updateTrail();
+  ui.timeline.value = '0'; ui.timeline.max = '0'; ui.inputs.textContent = '-';
+  ui['map-id'].textContent = map.id;
+  ui['map-select'].value = key;
+  const url = new URL(location.href);
+  url.searchParams.set('map', key);
+  history.replaceState(null, '', url);
+  document.title = `${entry.name} 走图录制`;
+  buildMapVisuals();
+  setMode('idle');
+  if (!entry.mesh) {
+    collisionMesh = buildStructureGeometry(map);
+    mapObjects.add(collisionMesh);
+    modelName = '比赛静态地图结构';
+    ui['view-status'].textContent = `${entry.name} 比赛静态地图 · 结构几何`;
+    ui['asset-note'].textContent = '地面、墙体和坡道来自同版本比赛静态数据；原始三角碰撞文件未取得，本地移动碰撞为近似实现。';
+    updateTrail();
+    ui.record.disabled = false;
+    ui.rerecord.disabled = false;
+    return;
+  }
+  ui.record.disabled = true;
+  ui.rerecord.disabled = true;
+  ui['view-status'].textContent = `${entry.name} · 加载几何中`;
   try {
-    const response = await fetch('/assets/de_dust2.mesh');
+    const response = await fetch(entry.mesh);
     if (!response.ok) throw new Error('mesh absent');
     const parsed = parseAwpyMesh(await response.arrayBuffer());
+    if (version !== mapLoadVersion) return;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(parsed.positions, 3));
     geometry.setIndex(new THREE.BufferAttribute(parsed.indices, 1));
@@ -324,12 +379,20 @@ async function loadDefaultMesh() {
     collisionMesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
       color: 0xcbbba3, side: THREE.DoubleSide, roughness: 0.94, metalness: 0,
     }));
-    scene.add(collisionMesh);
-    modelName = 'awpy-data 2000943 / de_dust2.mesh';
-    ui['view-status'].textContent = 'CS2 Dust2 实际几何 · 抽稀碰撞网格';
+    mapObjects.add(collisionMesh);
+    modelName = `awpy-data 2000943 / ${entry.mesh.split('/').at(-1)}`;
+    ui['view-status'].textContent = `CS2 ${entry.name} 实际几何 · 抽稀碰撞网格`;
     ui['asset-note'].textContent = '已加载与平台 bounds 对齐的 CS2 world_physics 网格。可走图录制；网格经过抽稀，移动碰撞为本地近似实现。';
+    updateTrail();
+    ui.record.disabled = false;
+    ui.rerecord.disabled = false;
   } catch {
-    ui['view-status'].textContent = '平台导航数据预览 · 未加载 3D 几何';
+    if (version === mapLoadVersion) {
+      ui['view-status'].textContent = '平台导航数据预览 · 未加载 3D 几何';
+      ui['asset-note'].textContent = '几何加载失败。当前仅有导航预览，请勿据此录制精确路线。';
+      ui.record.disabled = true;
+      ui.rerecord.disabled = true;
+    }
   }
 }
-loadDefaultMesh();
+selectMap(new URLSearchParams(location.search).get('map') || 'dust2');

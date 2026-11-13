@@ -1,5 +1,5 @@
 export function createRecording({mapId, mapHash, hz}) {
-  return {format: 'dust2-walk-v1', mapId, mapHash, hz, frames: []};
+  return {format: 'walklab-v2', mapId, mapHash, hz, frames: []};
 }
 
 export function appendFrame(recording, frame) {
@@ -20,7 +20,9 @@ export function validateRecording(recording) {
   for (const key of ['mapId', 'mapHash', 'hz']) {
     if (!recording[key]) throw new Error(`${key} is required`);
   }
-  if (recording.format !== 'dust2-walk-v1' || !Array.isArray(recording.frames)) {
+  if (!['walklab-v2', 'dust2-walk-v1'].includes(recording.format) ||
+      (recording.format === 'dust2-walk-v1' && recording.mapId !== 'dust2-cs2-v54') ||
+      !Array.isArray(recording.frames)) {
     throw new Error('unsupported recording format');
   }
   for (let i = 0; i < recording.frames.length; i++) {

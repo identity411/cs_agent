@@ -12,6 +12,15 @@ test('records ordered controls, pose and aim for deterministic playback', () => 
   assert.deepEqual(sampleFrame(recording, 1).keys, ['KeyW', 'ShiftLeft']);
 });
 
+test('new recordings identify the selected map and accept legacy Dust2 files', () => {
+  const mirage = createRecording({mapId: 'mirage-cs2-v54', mapHash: 'mirage-hash', hz: 20});
+  assert.equal(mirage.format, 'walklab-v2');
+  assert.equal(mirage.mapId, 'mirage-cs2-v54');
+  assert.equal(validateRecording(mirage), true);
+  assert.equal(validateRecording({...mirage, format: 'dust2-walk-v1', mapId: 'dust2-cs2-v54'}), true);
+  assert.throws(() => validateRecording({...mirage, format: 'dust2-walk-v1'}), /unsupported recording format/);
+});
+
 test('rejects missing frames and map identity', () => {
   const recording = createRecording({mapId: 'dust2-cs2-v54', mapHash: 'abc', hz: 20});
   assert.throws(() => sampleFrame(recording, 0), /no frame/);

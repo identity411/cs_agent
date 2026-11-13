@@ -1,0 +1,3449 @@
+{
+  "type": "map",
+  "map": {
+    "format": "rsi.fps54.triangle-map.v1",
+    "id": "nevaio-r3-v54",
+    "bounds": {
+      "min": [
+        -90.0,
+        -90.0,
+        -0.25
+      ],
+      "max": [
+        234.0,
+        218.0,
+        8.899999618530273
+      ]
+    },
+    "source": {
+      "kind": "original-authored-broadcast-mesh",
+      "legacy_id": "nevaio-whitebox-r3-v5",
+      "legacy_geometry_hash": "44dffceb651862a62312aa8d5a3db22f87926027bca6f160b884086f47932de2",
+      "source_file_sha256": "0eeec6e6e9cf87ed1f542aea766aede5d6feb7952e70e8f4dc9fb8eb6746d11f",
+      "map_format_sha256": "3d208c1df558ee219e7092dc0230ce5842208822730e723f77217926bdcccbe5",
+      "renderer_sha256": {
+        "web/src/fps-broadcast-city.ts": "a848e12801e659d5165085a435209dde13ec845b8f9f1206eefcf66312fba3c5",
+        "web/src/fps-broadcast-scene.ts": "3732a7cfc69be68a3c0475e087f6e5a81450897db1a26e58b01c383590190b49"
+      },
+      "mesh_ranges": [
+        {
+          "name": "masonry-facades",
+          "first": 0,
+          "count": 6408
+        },
+        {
+          "name": "terraces",
+          "first": 6408,
+          "count": 126
+        },
+        {
+          "name": "trim",
+          "first": 6534,
+          "count": 5116
+        },
+        {
+          "name": "facade-frames/-1,0",
+          "first": 11650,
+          "count": 840
+        },
+        {
+          "name": "facade-frames/0,-1",
+          "first": 12490,
+          "count": 120
+        },
+        {
+          "name": "facade-frames/4,-1",
+          "first": 12610,
+          "count": 120
+        },
+        {
+          "name": "facade-frames/4,0",
+          "first": 12730,
+          "count": 1560
+        },
+        {
+          "name": "facade-frames/0,0",
+          "first": 14290,
+          "count": 800
+        },
+        {
+          "name": "facade-frames/1,0",
+          "first": 15090,
+          "count": 400
+        },
+        {
+          "name": "facade-frames/3,0",
+          "first": 15490,
+          "count": 1656
+        },
+        {
+          "name": "facade-frames/2,0",
+          "first": 17146,
+          "count": 560
+        },
+        {
+          "name": "facade-frames/4,3",
+          "first": 17706,
+          "count": 320
+        },
+        {
+          "name": "facade-frames/4,4",
+          "first": 18026,
+          "count": 680
+        },
+        {
+          "name": "facade-frames/0,1",
+          "first": 18706,
+          "count": 480
+        },
+        {
+          "name": "facade-frames/-1,1",
+          "first": 19186,
+          "count": 240
+        },
+        {
+          "name": "facade-frames/3,2",
+          "first": 19426,
+          "count": 1008
+        },
+        {
+          "name": "facade-frames/3,1",
+          "first": 20434,
+          "count": 1596
+        },
+        {
+          "name": "facade-frames/2,1",
+          "first": 22030,
+          "count": 4996
+        },
+        {
+          "name": "facade-frames/1,1",
+          "first": 27026,
+          "count": 720
+        },
+        {
+          "name": "facade-frames/1,2",
+          "first": 27746,
+          "count": 1584
+        },
+        {
+          "name": "facade-frames/0,3",
+          "first": 29330,
+          "count": 800
+        },
+        {
+          "name": "facade-frames/0,4",
+          "first": 30130,
+          "count": 600
+        },
+        {
+          "name": "facade-frames/-1,3",
+          "first": 30730,
+          "count": 80
+        },
+        {
+          "name": "facade-frames/-1,4",
+          "first": 30810,
+          "count": 40
+        },
+        {
+          "name": "facade-frames/2,2",
+          "first": 30850,
+          "count": 576
+        },
+        {
+          "name": "facade-frames/0,2",
+          "first": 31426,
+          "count": 720
+        },
+        {
+          "name": "facade-frames/1,3",
+          "first": 32146,
+          "count": 1072
+        },
+        {
+          "name": "facade-frames/3,3",
+          "first": 33218,
+          "count": 480
+        },
+        {
+          "name": "facade-frames/3,4",
+          "first": 33698,
+          "count": 440
+        },
+        {
+          "name": "facade-frames/2,3",
+          "first": 34138,
+          "count": 560
+        },
+        {
+          "name": "facade-frames/2,4",
+          "first": 34698,
+          "count": 160
+        },
+        {
+          "name": "streets",
+          "first": 34858,
+          "count": 2
+        },
+        {
+          "name": "retaining-walls",
+          "first": 34860,
+          "count": 626
+        },
+        {
+          "name": "decks-and-steps",
+          "first": 35486,
+          "count": 174
+        },
+        {
+          "name": "crates",
+          "first": 35660,
+          "count": 280
+        }
+      ],
+      "site_conversion": "inscribed-circle; center and level preserved",
+      "navigation_adjustments": [
+        {
+          "id": "look_top",
+          "previous": [
+            126.1,
+            18,
+            3.6
+          ],
+          "position": [
+            126.3,
+            18.0,
+            3.5999999046325684
+          ],
+          "reason": "full hull clearance from visible ladder bars"
+        },
+        {
+          "id": "front_ladder_top",
+          "previous": [
+            112,
+            61.1,
+            2.4
+          ],
+          "position": [
+            112.0,
+            61.300000000000004,
+            2.4000000953674316
+          ],
+          "reason": "full hull clearance from visible ladder bars"
+        }
+      ],
+      "navigation_replacements": [
+        {
+          "original": {
+            "from": "look_top",
+            "to": "look_base",
+            "kind": "drop"
+          },
+          "replacement": [
+            {
+              "from": "look_top",
+              "to": "look_ladder_drop_upper",
+              "kind": "walk"
+            },
+            {
+              "from": "look_ladder_drop_upper",
+              "to": "look_ladder_drop_lower",
+              "kind": "drop"
+            },
+            {
+              "from": "look_ladder_drop_lower",
+              "to": "look_base",
+              "kind": "walk"
+            }
+          ],
+          "reason": "drop beside visible ladder bars, not through them"
+        },
+        {
+          "original": {
+            "from": "clean_e",
+            "to": "front_drop",
+            "kind": "drop"
+          },
+          "replacement": [
+            {
+              "from": "clean_e",
+              "to": "front_return_ladder_drop_upper",
+              "kind": "walk"
+            },
+            {
+              "from": "front_return_ladder_drop_upper",
+              "to": "front_return_ladder_drop_lower",
+              "kind": "drop"
+            },
+            {
+              "from": "front_return_ladder_drop_lower",
+              "to": "front_drop",
+              "kind": "walk"
+            }
+          ],
+          "reason": "drop beside visible ladder bars, not through them"
+        }
+      ],
+      "excluded_render_meshes": [
+        "section-floor"
+      ]
+    },
+    "collision": [
+      {
+        "id": "visible-world",
+        "positions": {
+          "path": "fps_v54_nevaio.positions.f32",
+          "sha256": "f50e84684aa970ddfb874e8ea6a881b49176d503de63fa37ade06635fb55e212",
+          "triangles": 35940
+        },
+        "materials": {
+          "path": "fps_v54_nevaio.materials.u8",
+          "sha256": "2088612d37694a7dd6235c8764243b3aa856325a521546d33df84ef097a175c6"
+        }
+      }
+    ],
+    "spawns": {
+      "T": [
+        {
+          "position": [
+            18.2,
+            110,
+            0
+          ],
+          "yaw": -1.5707963267948966,
+          "nav_id": "ts"
+        },
+        {
+          "position": [
+            19.1,
+            110,
+            0
+          ],
+          "yaw": -1.5707963267948966,
+          "nav_id": "ts"
+        },
+        {
+          "position": [
+            20.0,
+            110,
+            0
+          ],
+          "yaw": -1.5707963267948966,
+          "nav_id": "ts"
+        },
+        {
+          "position": [
+            20.9,
+            110,
+            0
+          ],
+          "yaw": -1.5707963267948966,
+          "nav_id": "ts"
+        },
+        {
+          "position": [
+            21.8,
+            110,
+            0
+          ],
+          "yaw": -1.5707963267948966,
+          "nav_id": "ts"
+        }
+      ],
+      "CT": [
+        {
+          "position": [
+            116.2,
+            18,
+            0
+          ],
+          "yaw": 1.5707963267948966,
+          "nav_id": "ct"
+        },
+        {
+          "position": [
+            117.1,
+            18,
+            0
+          ],
+          "yaw": 1.5707963267948966,
+          "nav_id": "ct"
+        },
+        {
+          "position": [
+            118.0,
+            18,
+            0
+          ],
+          "yaw": 1.5707963267948966,
+          "nav_id": "ct"
+        },
+        {
+          "position": [
+            118.9,
+            18,
+            0
+          ],
+          "yaw": 1.5707963267948966,
+          "nav_id": "ct"
+        },
+        {
+          "position": [
+            119.8,
+            18,
+            0
+          ],
+          "yaw": 1.5707963267948966,
+          "nav_id": "ct"
+        }
+      ]
+    },
+    "sites": [
+      {
+        "id": "A",
+        "center": [
+          112.0,
+          90.0,
+          2.4
+        ],
+        "radius": 4.0
+      },
+      {
+        "id": "B",
+        "center": [
+          52.0,
+          26.0,
+          0
+        ],
+        "radius": 4.0
+      }
+    ],
+    "ladders": [
+      {
+        "id": "look_ladder",
+        "rail": [
+          125.599999,
+          18.0
+        ],
+        "normal": [
+          -1,
+          0,
+          0
+        ],
+        "width": 2,
+        "bottom": -0.0020000000949949026,
+        "top": 3.5999999046325684,
+        "bottom_exit": [
+          125.35,
+          18,
+          -0.0020000000949949026
+        ],
+        "top_exit": [
+          126.3,
+          18.0,
+          3.5999999046325684
+        ]
+      },
+      {
+        "id": "front_return_ladder",
+        "rail": [
+          112.0,
+          60.599999
+        ],
+        "normal": [
+          0,
+          -1,
+          0
+        ],
+        "width": 2,
+        "bottom": -0.0020000000949949026,
+        "top": 2.4000000953674316,
+        "bottom_exit": [
+          112,
+          60.35,
+          -0.0020000000949949026
+        ],
+        "top_exit": [
+          112.0,
+          61.300000000000004,
+          2.4000000953674316
+        ]
+      }
+    ],
+    "nav": {
+      "nodes": [
+        {
+          "id": "ts",
+          "position": [
+            20,
+            110,
+            0
+          ]
+        },
+        {
+          "id": "ct",
+          "position": [
+            118,
+            18,
+            0
+          ]
+        },
+        {
+          "id": "A",
+          "position": [
+            112,
+            90,
+            2.4
+          ]
+        },
+        {
+          "id": "B",
+          "position": [
+            52,
+            26,
+            0
+          ]
+        },
+        {
+          "id": "wind_gate",
+          "position": [
+            20,
+            122,
+            0
+          ]
+        },
+        {
+          "id": "wind_wall",
+          "position": [
+            66,
+            122,
+            0
+          ]
+        },
+        {
+          "id": "outpost",
+          "position": [
+            66,
+            108,
+            1.2
+          ]
+        },
+        {
+          "id": "outpost_e",
+          "position": [
+            96,
+            108,
+            1.2
+          ]
+        },
+        {
+          "id": "observation",
+          "position": [
+            96,
+            90,
+            2.4
+          ]
+        },
+        {
+          "id": "specimen",
+          "position": [
+            42,
+            110,
+            0
+          ]
+        },
+        {
+          "id": "specimen_s",
+          "position": [
+            42,
+            84,
+            0
+          ]
+        },
+        {
+          "id": "mid",
+          "position": [
+            64,
+            84,
+            1.2
+          ]
+        },
+        {
+          "id": "clean",
+          "position": [
+            80,
+            84,
+            1.2
+          ]
+        },
+        {
+          "id": "clean_s",
+          "position": [
+            80,
+            66,
+            1.2
+          ]
+        },
+        {
+          "id": "clean_e",
+          "position": [
+            112,
+            66,
+            2.4
+          ]
+        },
+        {
+          "id": "ice_gate",
+          "position": [
+            16,
+            110,
+            0
+          ]
+        },
+        {
+          "id": "ice_turn",
+          "position": [
+            16,
+            62,
+            0
+          ]
+        },
+        {
+          "id": "ice_shelter",
+          "position": [
+            28,
+            62,
+            0
+          ]
+        },
+        {
+          "id": "ice_s",
+          "position": [
+            28,
+            26,
+            0
+          ]
+        },
+        {
+          "id": "maintenance",
+          "position": [
+            64,
+            52,
+            1.2
+          ]
+        },
+        {
+          "id": "maintenance_e",
+          "position": [
+            76,
+            52,
+            0
+          ]
+        },
+        {
+          "id": "drill_e",
+          "position": [
+            76,
+            34,
+            0
+          ]
+        },
+        {
+          "id": "warm_hall",
+          "position": [
+            86,
+            18,
+            0
+          ]
+        },
+        {
+          "id": "warm_gate",
+          "position": [
+            52,
+            18,
+            0
+          ]
+        },
+        {
+          "id": "equipment",
+          "position": [
+            118,
+            66,
+            0
+          ]
+        },
+        {
+          "id": "equipment_n",
+          "position": [
+            118,
+            90,
+            2.4
+          ]
+        },
+        {
+          "id": "rear_corner",
+          "position": [
+            118,
+            22,
+            0
+          ]
+        },
+        {
+          "id": "rear_door",
+          "position": [
+            52,
+            22,
+            0
+          ]
+        },
+        {
+          "id": "drill_entry",
+          "position": [
+            52,
+            34,
+            0
+          ]
+        },
+        {
+          "id": "look_base",
+          "position": [
+            125.35,
+            18,
+            0
+          ]
+        },
+        {
+          "id": "look_top",
+          "position": [
+            126.3,
+            18.0,
+            3.5999999046325684
+          ]
+        },
+        {
+          "id": "front_drop",
+          "position": [
+            112,
+            58,
+            0
+          ]
+        },
+        {
+          "id": "front_ladder_base",
+          "position": [
+            112,
+            60.35,
+            0
+          ]
+        },
+        {
+          "id": "front_ladder_top",
+          "position": [
+            112.0,
+            61.300000000000004,
+            2.4000000953674316
+          ]
+        },
+        {
+          "id": "look_ladder_drop_upper",
+          "position": [
+            126.3,
+            16.4,
+            3.5999999046325684
+          ]
+        },
+        {
+          "id": "look_ladder_drop_lower",
+          "position": [
+            125.35,
+            16.4,
+            -0.0020000000949949026
+          ]
+        },
+        {
+          "id": "front_return_ladder_drop_upper",
+          "position": [
+            110.4,
+            61.300000000000004,
+            2.4000000953674316
+          ]
+        },
+        {
+          "id": "front_return_ladder_drop_lower",
+          "position": [
+            110.4,
+            60.35,
+            -0.0020000000949949026
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": "ts",
+          "to": "wind_gate",
+          "kind": "walk"
+        },
+        {
+          "from": "wind_gate",
+          "to": "wind_wall",
+          "kind": "walk"
+        },
+        {
+          "from": "wind_wall",
+          "to": "outpost",
+          "kind": "walk"
+        },
+        {
+          "from": "outpost",
+          "to": "outpost_e",
+          "kind": "walk"
+        },
+        {
+          "from": "outpost_e",
+          "to": "observation",
+          "kind": "walk"
+        },
+        {
+          "from": "observation",
+          "to": "A",
+          "kind": "walk"
+        },
+        {
+          "from": "ts",
+          "to": "specimen",
+          "kind": "walk"
+        },
+        {
+          "from": "specimen",
+          "to": "specimen_s",
+          "kind": "walk"
+        },
+        {
+          "from": "specimen_s",
+          "to": "mid",
+          "kind": "walk"
+        },
+        {
+          "from": "mid",
+          "to": "clean",
+          "kind": "walk"
+        },
+        {
+          "from": "clean",
+          "to": "clean_s",
+          "kind": "walk"
+        },
+        {
+          "from": "clean_s",
+          "to": "clean_e",
+          "kind": "walk"
+        },
+        {
+          "from": "clean_e",
+          "to": "A",
+          "kind": "walk"
+        },
+        {
+          "from": "mid",
+          "to": "maintenance",
+          "kind": "walk"
+        },
+        {
+          "from": "maintenance",
+          "to": "maintenance_e",
+          "kind": "walk"
+        },
+        {
+          "from": "maintenance_e",
+          "to": "drill_e",
+          "kind": "walk"
+        },
+        {
+          "from": "drill_e",
+          "to": "drill_entry",
+          "kind": "walk"
+        },
+        {
+          "from": "drill_entry",
+          "to": "B",
+          "kind": "walk"
+        },
+        {
+          "from": "ts",
+          "to": "ice_gate",
+          "kind": "walk"
+        },
+        {
+          "from": "ice_gate",
+          "to": "ice_turn",
+          "kind": "walk"
+        },
+        {
+          "from": "ice_turn",
+          "to": "ice_shelter",
+          "kind": "walk"
+        },
+        {
+          "from": "ice_shelter",
+          "to": "ice_s",
+          "kind": "walk"
+        },
+        {
+          "from": "ice_s",
+          "to": "B",
+          "kind": "walk"
+        },
+        {
+          "from": "ct",
+          "to": "warm_hall",
+          "kind": "walk"
+        },
+        {
+          "from": "warm_hall",
+          "to": "warm_gate",
+          "kind": "walk"
+        },
+        {
+          "from": "warm_gate",
+          "to": "rear_door",
+          "kind": "walk"
+        },
+        {
+          "from": "rear_door",
+          "to": "B",
+          "kind": "walk"
+        },
+        {
+          "from": "ct",
+          "to": "rear_corner",
+          "kind": "walk"
+        },
+        {
+          "from": "rear_corner",
+          "to": "equipment",
+          "kind": "walk"
+        },
+        {
+          "from": "equipment",
+          "to": "equipment_n",
+          "kind": "walk"
+        },
+        {
+          "from": "equipment_n",
+          "to": "A",
+          "kind": "walk"
+        },
+        {
+          "from": "rear_corner",
+          "to": "rear_door",
+          "kind": "walk"
+        },
+        {
+          "from": "ct",
+          "to": "look_base",
+          "kind": "walk"
+        },
+        {
+          "from": "look_base",
+          "to": "look_top",
+          "kind": "ladder"
+        },
+        {
+          "from": "look_top",
+          "to": "look_ladder_drop_upper",
+          "kind": "walk"
+        },
+        {
+          "from": "look_ladder_drop_upper",
+          "to": "look_ladder_drop_lower",
+          "kind": "drop"
+        },
+        {
+          "from": "look_ladder_drop_lower",
+          "to": "look_base",
+          "kind": "walk"
+        },
+        {
+          "from": "clean_e",
+          "to": "front_return_ladder_drop_upper",
+          "kind": "walk"
+        },
+        {
+          "from": "front_return_ladder_drop_upper",
+          "to": "front_return_ladder_drop_lower",
+          "kind": "drop"
+        },
+        {
+          "from": "front_return_ladder_drop_lower",
+          "to": "front_drop",
+          "kind": "walk"
+        },
+        {
+          "from": "front_drop",
+          "to": "drill_e",
+          "kind": "walk"
+        },
+        {
+          "from": "front_drop",
+          "to": "front_ladder_base",
+          "kind": "walk"
+        },
+        {
+          "from": "front_ladder_base",
+          "to": "front_ladder_top",
+          "kind": "ladder"
+        },
+        {
+          "from": "front_ladder_top",
+          "to": "clean_e",
+          "kind": "walk"
+        }
+      ]
+    },
+    "geometry_hash": "78137c32df32b0f734cc25c35c94317632084f15c18d846114b3e5314b9e67e3",
+    "spawn_pads_by_side": {
+      "attack": [
+        [
+          18.2,
+          110,
+          0,
+          -1.5707963267948966
+        ],
+        [
+          19.1,
+          110,
+          0,
+          -1.5707963267948966
+        ],
+        [
+          20.0,
+          110,
+          0,
+          -1.5707963267948966
+        ],
+        [
+          20.9,
+          110,
+          0,
+          -1.5707963267948966
+        ],
+        [
+          21.8,
+          110,
+          0,
+          -1.5707963267948966
+        ]
+      ],
+      "defend": [
+        [
+          116.2,
+          18,
+          0,
+          1.5707963267948966
+        ],
+        [
+          117.1,
+          18,
+          0,
+          1.5707963267948966
+        ],
+        [
+          118.0,
+          18,
+          0,
+          1.5707963267948966
+        ],
+        [
+          118.9,
+          18,
+          0,
+          1.5707963267948966
+        ],
+        [
+          119.8,
+          18,
+          0,
+          1.5707963267948966
+        ]
+      ]
+    },
+    "route_landmarks": {
+      "A": [
+        112.0,
+        90.0,
+        2.4
+      ],
+      "B": [
+        52.0,
+        26.0,
+        0
+      ]
+    },
+    "width": 144,
+    "height": 128,
+    "boxes": [
+      {
+        "id": "drill_core",
+        "x": 58.5,
+        "y": 31.0,
+        "z": 0,
+        "w": 5,
+        "d": 4,
+        "h": 2.6,
+        "material": "stone"
+      },
+      {
+        "id": "outpost_screen",
+        "x": 101.5,
+        "y": 95.0,
+        "z": 0,
+        "w": 7,
+        "d": 2,
+        "h": 4.6,
+        "material": "stone"
+      },
+      {
+        "id": "look_platform",
+        "x": 128.0,
+        "y": 18.0,
+        "z": 0,
+        "w": 4,
+        "d": 6,
+        "h": 3.6,
+        "material": "stone"
+      },
+      {
+        "id": "shell_0",
+        "x": 72.0,
+        "y": 4.0,
+        "z": 0,
+        "w": 144,
+        "d": 8,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_1",
+        "x": 21.0,
+        "y": 11.0,
+        "z": 0,
+        "w": 42,
+        "d": 6,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_2",
+        "x": 120.0,
+        "y": 9.0,
+        "z": 0,
+        "w": 48,
+        "d": 2,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_3",
+        "x": 103.0,
+        "y": 11.5,
+        "z": 0,
+        "w": 14,
+        "d": 3,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_4",
+        "x": 135.0,
+        "y": 11.5,
+        "z": 0,
+        "w": 18,
+        "d": 3,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_5",
+        "x": 138.0,
+        "y": 70.5,
+        "z": 0,
+        "w": 12,
+        "d": 115,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_6",
+        "x": 16.0,
+        "y": 15.0,
+        "z": 0,
+        "w": 32,
+        "d": 2,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_7",
+        "x": 9.0,
+        "y": 34.0,
+        "z": 0,
+        "w": 18,
+        "d": 36,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_8",
+        "x": 129.0,
+        "y": 51.5,
+        "z": 0,
+        "w": 6,
+        "d": 57,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_9",
+        "x": 124.5,
+        "y": 53.0,
+        "z": 0,
+        "w": 3,
+        "d": 54,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_10",
+        "x": 104.5,
+        "y": 34.5,
+        "z": 0,
+        "w": 17,
+        "d": 15,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_11",
+        "x": 81.0,
+        "y": 28.5,
+        "z": 0,
+        "w": 30,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_12",
+        "x": 88.5,
+        "y": 30.5,
+        "z": 0,
+        "w": 15,
+        "d": 3,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_13",
+        "x": 89.5,
+        "y": 32.5,
+        "z": 0,
+        "w": 13,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_14",
+        "x": 90.0,
+        "y": 33.5,
+        "z": 0,
+        "w": 12,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_15",
+        "x": 91.0,
+        "y": 34.5,
+        "z": 0,
+        "w": 10,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_16",
+        "x": 91.5,
+        "y": 35.5,
+        "z": 0,
+        "w": 9,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_17",
+        "x": 92.5,
+        "y": 36.5,
+        "z": 0,
+        "w": 7,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_18",
+        "x": 93.0,
+        "y": 37.5,
+        "z": 0,
+        "w": 6,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_19",
+        "x": 94.0,
+        "y": 38.5,
+        "z": 0,
+        "w": 4,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_20",
+        "x": 68.5,
+        "y": 43.0,
+        "z": 0,
+        "w": 5,
+        "d": 8,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_21",
+        "x": 94.5,
+        "y": 39.5,
+        "z": 0,
+        "w": 3,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_22",
+        "x": 95.5,
+        "y": 40.5,
+        "z": 0,
+        "w": 1,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_23",
+        "x": 52.0,
+        "y": 44.5,
+        "z": 0,
+        "w": 28,
+        "d": 5,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_24",
+        "x": 105.5,
+        "y": 42.5,
+        "z": 0,
+        "w": 15,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_25",
+        "x": 106.0,
+        "y": 43.5,
+        "z": 0,
+        "w": 14,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_26",
+        "x": 82.0,
+        "y": 50.0,
+        "z": 0,
+        "w": 2,
+        "d": 12,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_27",
+        "x": 107.0,
+        "y": 44.5,
+        "z": 0,
+        "w": 12,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_28",
+        "x": 83.5,
+        "y": 50.5,
+        "z": 0,
+        "w": 1,
+        "d": 11,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_29",
+        "x": 107.5,
+        "y": 45.5,
+        "z": 0,
+        "w": 11,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_30",
+        "x": 85.0,
+        "y": 51.0,
+        "z": 0,
+        "w": 2,
+        "d": 10,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_31",
+        "x": 108.5,
+        "y": 46.5,
+        "z": 0,
+        "w": 9,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_32",
+        "x": 48.5,
+        "y": 60.5,
+        "z": 0,
+        "w": 21,
+        "d": 27,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_33",
+        "x": 86.5,
+        "y": 51.5,
+        "z": 0,
+        "w": 1,
+        "d": 9,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_34",
+        "x": 109.0,
+        "y": 47.5,
+        "z": 0,
+        "w": 8,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_35",
+        "x": 88.0,
+        "y": 52.0,
+        "z": 0,
+        "w": 2,
+        "d": 8,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_36",
+        "x": 110.0,
+        "y": 48.5,
+        "z": 0,
+        "w": 6,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_37",
+        "x": 89.5,
+        "y": 52.5,
+        "z": 0,
+        "w": 1,
+        "d": 7,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_38",
+        "x": 110.5,
+        "y": 49.5,
+        "z": 0,
+        "w": 5,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_39",
+        "x": 91.0,
+        "y": 55.5,
+        "z": 0,
+        "w": 2,
+        "d": 11,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_40",
+        "x": 111.5,
+        "y": 50.5,
+        "z": 0,
+        "w": 3,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_41",
+        "x": 92.5,
+        "y": 56.0,
+        "z": 0,
+        "w": 1,
+        "d": 10,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_42",
+        "x": 112.0,
+        "y": 51.5,
+        "z": 0,
+        "w": 2,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_43",
+        "x": 3.0,
+        "y": 90.0,
+        "z": 0,
+        "w": 6,
+        "d": 76,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_44",
+        "x": 94.0,
+        "y": 56.5,
+        "z": 0,
+        "w": 2,
+        "d": 9,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_45",
+        "x": 95.5,
+        "y": 57.0,
+        "z": 0,
+        "w": 1,
+        "d": 8,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_46",
+        "x": 97.0,
+        "y": 57.5,
+        "z": 0,
+        "w": 2,
+        "d": 7,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_47",
+        "x": 98.5,
+        "y": 58.0,
+        "z": 0,
+        "w": 1,
+        "d": 6,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_48",
+        "x": 100.0,
+        "y": 58.5,
+        "z": 0,
+        "w": 2,
+        "d": 5,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_49",
+        "x": 69.5,
+        "y": 65.5,
+        "z": 0,
+        "w": 1,
+        "d": 17,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_50",
+        "x": 101.5,
+        "y": 59.0,
+        "z": 0,
+        "w": 1,
+        "d": 4,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_51",
+        "x": 96.0,
+        "y": 75.5,
+        "z": 0,
+        "w": 12,
+        "d": 9,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_52",
+        "x": 32.0,
+        "y": 73.0,
+        "z": 0,
+        "w": 12,
+        "d": 2,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_53",
+        "x": 29.0,
+        "y": 87.0,
+        "z": 0,
+        "w": 6,
+        "d": 26,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_54",
+        "x": 53.0,
+        "y": 76.5,
+        "z": 0,
+        "w": 2,
+        "d": 5,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_55",
+        "x": 130.0,
+        "y": 104.0,
+        "z": 0,
+        "w": 4,
+        "d": 48,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_56",
+        "x": 53.0,
+        "y": 100.5,
+        "z": 0,
+        "w": 2,
+        "d": 23,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_57",
+        "x": 70.0,
+        "y": 96.0,
+        "z": 0,
+        "w": 32,
+        "d": 4,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_58",
+        "x": 55.0,
+        "y": 105.0,
+        "z": 0,
+        "w": 2,
+        "d": 14,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_59",
+        "x": 117.0,
+        "y": 114.0,
+        "z": 0,
+        "w": 22,
+        "d": 28,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_60",
+        "x": 91.0,
+        "y": 123.0,
+        "z": 0,
+        "w": 30,
+        "d": 10,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_61",
+        "x": 8.0,
+        "y": 124.0,
+        "z": 0,
+        "w": 4,
+        "d": 8,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "shell_62",
+        "x": 43.0,
+        "y": 127.5,
+        "z": 0,
+        "w": 66,
+        "d": 1,
+        "h": 8,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_0",
+        "x": 64.0,
+        "y": 70.5,
+        "z": 0,
+        "w": 10,
+        "d": 47,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_1",
+        "x": 85.5,
+        "y": 58.5,
+        "z": 0,
+        "w": 9,
+        "d": 5,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_2",
+        "x": 75.5,
+        "y": 75.5,
+        "z": 0,
+        "w": 11,
+        "d": 37,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_3",
+        "x": 83.0,
+        "y": 77.5,
+        "z": 0,
+        "w": 4,
+        "d": 33,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_4",
+        "x": 87.5,
+        "y": 82.5,
+        "z": 0,
+        "w": 5,
+        "d": 23,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_5",
+        "x": 56.5,
+        "y": 76.5,
+        "z": 0,
+        "w": 5,
+        "d": 5,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_6",
+        "x": 69.5,
+        "y": 84.0,
+        "z": 0,
+        "w": 1,
+        "d": 20,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_7",
+        "x": 56.5,
+        "y": 91.5,
+        "z": 0,
+        "w": 5,
+        "d": 5,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_8",
+        "x": 71.0,
+        "y": 105.5,
+        "z": 0,
+        "w": 30,
+        "d": 15,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_9",
+        "x": 88.5,
+        "y": 109.0,
+        "z": 0,
+        "w": 5,
+        "d": 18,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_10",
+        "x": 103.5,
+        "y": 109.0,
+        "z": 0,
+        "w": 5,
+        "d": 18,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_11",
+        "x": 96.0,
+        "y": 110.5,
+        "z": 0,
+        "w": 10,
+        "d": 15,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_12",
+        "x": 58.5,
+        "y": 115.5,
+        "z": 0,
+        "w": 5,
+        "d": 5,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_1.2_13",
+        "x": 78.5,
+        "y": 115.5,
+        "z": 0,
+        "w": 15,
+        "d": 5,
+        "h": 1.2,
+        "material": "stone"
+      },
+      {
+        "id": "floor_2.4_0",
+        "x": 104.5,
+        "y": 58.5,
+        "z": 0,
+        "w": 5,
+        "d": 5,
+        "h": 2.4,
+        "material": "stone"
+      },
+      {
+        "id": "floor_2.4_1",
+        "x": 110.0,
+        "y": 80.5,
+        "z": 0,
+        "w": 6,
+        "d": 39,
+        "h": 2.4,
+        "material": "stone"
+      },
+      {
+        "id": "floor_2.4_2",
+        "x": 104.5,
+        "y": 85.5,
+        "z": 0,
+        "w": 5,
+        "d": 29,
+        "h": 2.4,
+        "material": "stone"
+      },
+      {
+        "id": "floor_2.4_3",
+        "x": 96.0,
+        "y": 87.5,
+        "z": 0,
+        "w": 12,
+        "d": 15,
+        "h": 2.4,
+        "material": "stone"
+      },
+      {
+        "id": "floor_2.4_4",
+        "x": 125.5,
+        "y": 90.0,
+        "z": 0,
+        "w": 5,
+        "d": 20,
+        "h": 2.4,
+        "material": "stone"
+      },
+      {
+        "id": "floor_2.4_5",
+        "x": 118.0,
+        "y": 92.5,
+        "z": 0,
+        "w": 10,
+        "d": 15,
+        "h": 2.4,
+        "material": "stone"
+      },
+      {
+        "id": "floor_2.4_6",
+        "x": 88.0,
+        "y": 97.0,
+        "z": 0,
+        "w": 4,
+        "d": 6,
+        "h": 2.4,
+        "material": "stone"
+      },
+      {
+        "id": "floor_2.4_7",
+        "x": 90.5,
+        "y": 97.5,
+        "z": 0,
+        "w": 1,
+        "d": 5,
+        "h": 2.4,
+        "material": "stone"
+      },
+      {
+        "id": "floor_2.4_8",
+        "x": 101.5,
+        "y": 97.5,
+        "z": 0,
+        "w": 1,
+        "d": 5,
+        "h": 2.4,
+        "material": "stone"
+      },
+      {
+        "id": "cover_A",
+        "x": 115.5,
+        "y": 93.5,
+        "z": 2.4,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 1.1,
+        "material": "stone"
+      },
+      {
+        "id": "cover_B",
+        "x": 55.5,
+        "y": 29.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_wind_gate",
+        "x": 23.5,
+        "y": 125.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_wind_wall",
+        "x": 69.5,
+        "y": 125.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 1.1,
+        "material": "stone"
+      },
+      {
+        "id": "cover_outpost",
+        "x": 69.5,
+        "y": 111.5,
+        "z": 1.2,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_outpost_e",
+        "x": 99.5,
+        "y": 111.5,
+        "z": 1.2,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_observation",
+        "x": 99.5,
+        "y": 93.5,
+        "z": 2.4,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 1.1,
+        "material": "stone"
+      },
+      {
+        "id": "cover_specimen",
+        "x": 45.5,
+        "y": 113.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_specimen_s",
+        "x": 45.5,
+        "y": 87.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_mid",
+        "x": 67.5,
+        "y": 87.5,
+        "z": 1.2,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 1.1,
+        "material": "stone"
+      },
+      {
+        "id": "cover_clean",
+        "x": 83.5,
+        "y": 87.5,
+        "z": 1.2,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_clean_s",
+        "x": 83.5,
+        "y": 69.5,
+        "z": 1.2,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_clean_e",
+        "x": 115.5,
+        "y": 69.5,
+        "z": 2.4,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 1.1,
+        "material": "stone"
+      },
+      {
+        "id": "cover_ice_turn",
+        "x": 19.5,
+        "y": 65.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_ice_shelter",
+        "x": 31.5,
+        "y": 65.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 1.1,
+        "material": "stone"
+      },
+      {
+        "id": "cover_ice_s",
+        "x": 31.5,
+        "y": 29.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_maintenance",
+        "x": 67.5,
+        "y": 55.5,
+        "z": 1.2,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_maintenance_e",
+        "x": 79.5,
+        "y": 55.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 1.1,
+        "material": "stone"
+      },
+      {
+        "id": "cover_equipment",
+        "x": 121.5,
+        "y": 69.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_equipment_n",
+        "x": 121.5,
+        "y": 93.5,
+        "z": 2.4,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_rear_corner",
+        "x": 121.5,
+        "y": 25.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 1.1,
+        "material": "stone"
+      },
+      {
+        "id": "cover_rear_door",
+        "x": 55.5,
+        "y": 25.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_drill_entry",
+        "x": 55.5,
+        "y": 37.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_front_drop",
+        "x": 115.5,
+        "y": 61.5,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 1.1,
+        "material": "stone"
+      },
+      {
+        "id": "cover_front_ladder_base",
+        "x": 115.5,
+        "y": 63.85,
+        "z": 0,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      },
+      {
+        "id": "cover_front_ladder_top",
+        "x": 115.5,
+        "y": 64.6,
+        "z": 2.4,
+        "w": 1.6,
+        "d": 1.6,
+        "h": 2.2,
+        "material": "stone"
+      }
+    ],
+    "ramps": [
+      {
+        "id": "rise_wind_wall_outpost",
+        "x": 66.0,
+        "y": 115.0,
+        "w": 10,
+        "d": 4,
+        "z0": 1.2,
+        "z1": 0,
+        "axis": "y",
+        "material": "stone"
+      },
+      {
+        "id": "rise_outpost_e_observation",
+        "x": 96.0,
+        "y": 99.0,
+        "w": 10,
+        "d": 8,
+        "z0": 2.4,
+        "z1": 1.2,
+        "axis": "y",
+        "material": "stone"
+      },
+      {
+        "id": "rise_specimen_s_mid",
+        "x": 53.0,
+        "y": 84.0,
+        "w": 12,
+        "d": 10,
+        "z0": 0,
+        "z1": 1.2,
+        "axis": "x",
+        "material": "stone"
+      },
+      {
+        "id": "rise_clean_s_clean_e",
+        "x": 96.0,
+        "y": 66.0,
+        "w": 22,
+        "d": 10,
+        "z0": 1.2,
+        "z1": 2.4,
+        "axis": "x",
+        "material": "stone"
+      },
+      {
+        "id": "rise_maintenance_maintenance_e",
+        "x": 70.0,
+        "y": 52.0,
+        "w": 2,
+        "d": 10,
+        "z0": 1.2,
+        "z1": 0,
+        "axis": "x",
+        "material": "stone"
+      },
+      {
+        "id": "rise_equipment_equipment_n",
+        "x": 118.0,
+        "y": 78.0,
+        "w": 10,
+        "d": 14,
+        "z0": 0,
+        "z1": 2.4,
+        "axis": "y",
+        "material": "stone"
+      }
+    ],
+    "ground": {
+      "z": 0.0,
+      "material": "concrete"
+    },
+    "plant_zones": {
+      "A": {
+        "polygon": [
+          [
+            116.0,
+            90.0
+          ],
+          [
+            115.96577944549524,
+            90.52210476888021
+          ],
+          [
+            115.86370330515628,
+            91.03527618041008
+          ],
+          [
+            115.69551813004514,
+            91.53073372946037
+          ],
+          [
+            115.46410161513775,
+            92.0
+          ],
+          [
+            115.17341336116495,
+            92.43504571603488
+          ],
+          [
+            114.82842712474618,
+            92.82842712474618
+          ],
+          [
+            114.43504571603488,
+            93.17341336116495
+          ],
+          [
+            114.0,
+            93.46410161513775
+          ],
+          [
+            113.53073372946037,
+            93.69551813004514
+          ],
+          [
+            113.03527618041008,
+            93.86370330515628
+          ],
+          [
+            112.52210476888021,
+            93.96577944549524
+          ],
+          [
+            112.0,
+            94.0
+          ],
+          [
+            111.47789523111979,
+            93.96577944549524
+          ],
+          [
+            110.96472381958992,
+            93.86370330515628
+          ],
+          [
+            110.46926627053965,
+            93.69551813004514
+          ],
+          [
+            110.0,
+            93.46410161513775
+          ],
+          [
+            109.56495428396512,
+            93.17341336116495
+          ],
+          [
+            109.17157287525382,
+            92.82842712474618
+          ],
+          [
+            108.82658663883505,
+            92.43504571603488
+          ],
+          [
+            108.53589838486225,
+            92.0
+          ],
+          [
+            108.30448186995486,
+            91.53073372946037
+          ],
+          [
+            108.13629669484372,
+            91.03527618041008
+          ],
+          [
+            108.03422055450476,
+            90.52210476888021
+          ],
+          [
+            108.0,
+            90.0
+          ],
+          [
+            108.03422055450476,
+            89.47789523111979
+          ],
+          [
+            108.13629669484372,
+            88.96472381958992
+          ],
+          [
+            108.30448186995486,
+            88.46926627053963
+          ],
+          [
+            108.53589838486225,
+            88.0
+          ],
+          [
+            108.82658663883505,
+            87.56495428396512
+          ],
+          [
+            109.17157287525382,
+            87.17157287525382
+          ],
+          [
+            109.56495428396512,
+            86.82658663883507
+          ],
+          [
+            110.0,
+            86.53589838486225
+          ],
+          [
+            110.46926627053965,
+            86.30448186995486
+          ],
+          [
+            110.96472381958992,
+            86.13629669484372
+          ],
+          [
+            111.47789523111979,
+            86.03422055450476
+          ],
+          [
+            112.0,
+            86.0
+          ],
+          [
+            112.52210476888021,
+            86.03422055450476
+          ],
+          [
+            113.03527618041008,
+            86.13629669484372
+          ],
+          [
+            113.53073372946035,
+            86.30448186995486
+          ],
+          [
+            114.0,
+            86.53589838486225
+          ],
+          [
+            114.43504571603488,
+            86.82658663883505
+          ],
+          [
+            114.82842712474618,
+            87.17157287525382
+          ],
+          [
+            115.17341336116493,
+            87.56495428396512
+          ],
+          [
+            115.46410161513775,
+            88.0
+          ],
+          [
+            115.69551813004514,
+            88.46926627053965
+          ],
+          [
+            115.86370330515628,
+            88.96472381958992
+          ],
+          [
+            115.96577944549524,
+            89.47789523111979
+          ]
+        ],
+        "min_z": -0.6000000000000001,
+        "max_z": 5.4
+      },
+      "B": {
+        "polygon": [
+          [
+            56.0,
+            26.0
+          ],
+          [
+            55.965779445495244,
+            26.522104768880205
+          ],
+          [
+            55.86370330515627,
+            27.035276180410083
+          ],
+          [
+            55.695518130045144,
+            27.53073372946036
+          ],
+          [
+            55.46410161513776,
+            28.0
+          ],
+          [
+            55.17341336116494,
+            28.43504571603488
+          ],
+          [
+            54.82842712474619,
+            28.82842712474619
+          ],
+          [
+            54.435045716034885,
+            29.17341336116494
+          ],
+          [
+            54.0,
+            29.464101615137753
+          ],
+          [
+            53.53073372946036,
+            29.695518130045148
+          ],
+          [
+            53.03527618041008,
+            29.863703305156275
+          ],
+          [
+            52.522104768880205,
+            29.96577944549524
+          ],
+          [
+            52.0,
+            30.0
+          ],
+          [
+            51.477895231119795,
+            29.96577944549524
+          ],
+          [
+            50.96472381958992,
+            29.863703305156275
+          ],
+          [
+            50.46926627053964,
+            29.695518130045148
+          ],
+          [
+            50.0,
+            29.464101615137753
+          ],
+          [
+            49.564954283965115,
+            29.17341336116494
+          ],
+          [
+            49.17157287525381,
+            28.82842712474619
+          ],
+          [
+            48.82658663883506,
+            28.435045716034885
+          ],
+          [
+            48.53589838486224,
+            28.0
+          ],
+          [
+            48.304481869954856,
+            27.53073372946036
+          ],
+          [
+            48.13629669484373,
+            27.035276180410083
+          ],
+          [
+            48.034220554504756,
+            26.522104768880208
+          ],
+          [
+            48.0,
+            26.0
+          ],
+          [
+            48.034220554504756,
+            25.477895231119792
+          ],
+          [
+            48.13629669484373,
+            24.964723819589917
+          ],
+          [
+            48.304481869954856,
+            24.46926627053964
+          ],
+          [
+            48.53589838486224,
+            24.0
+          ],
+          [
+            48.82658663883506,
+            23.56495428396512
+          ],
+          [
+            49.17157287525381,
+            23.171572875253812
+          ],
+          [
+            49.564954283965115,
+            22.82658663883506
+          ],
+          [
+            50.0,
+            22.535898384862247
+          ],
+          [
+            50.46926627053964,
+            22.304481869954852
+          ],
+          [
+            50.96472381958992,
+            22.136296694843725
+          ],
+          [
+            51.477895231119795,
+            22.03422055450476
+          ],
+          [
+            52.0,
+            22.0
+          ],
+          [
+            52.522104768880205,
+            22.034220554504756
+          ],
+          [
+            53.03527618041008,
+            22.136296694843725
+          ],
+          [
+            53.53073372946036,
+            22.304481869954852
+          ],
+          [
+            54.0,
+            22.535898384862247
+          ],
+          [
+            54.43504571603488,
+            22.826586638835057
+          ],
+          [
+            54.82842712474619,
+            23.17157287525381
+          ],
+          [
+            55.17341336116494,
+            23.564954283965115
+          ],
+          [
+            55.46410161513775,
+            24.0
+          ],
+          [
+            55.695518130045144,
+            24.46926627053964
+          ],
+          [
+            55.86370330515627,
+            24.964723819589913
+          ],
+          [
+            55.965779445495244,
+            25.477895231119792
+          ]
+        ],
+        "min_z": -3,
+        "max_z": 3
+      }
+    },
+    "render": {
+      "theme": "whitebox",
+      "solids": {
+        "rise_wind_wall_outpost": {
+          "role": "stairs",
+          "surface": "neutral"
+        },
+        "rise_outpost_e_observation": {
+          "role": "stairs",
+          "surface": "neutral"
+        },
+        "rise_specimen_s_mid": {
+          "role": "stairs",
+          "surface": "neutral"
+        },
+        "rise_clean_s_clean_e": {
+          "role": "stairs",
+          "surface": "neutral"
+        },
+        "rise_maintenance_maintenance_e": {
+          "role": "stairs",
+          "surface": "neutral"
+        },
+        "rise_equipment_equipment_n": {
+          "role": "stairs",
+          "surface": "neutral"
+        },
+        "drill_core": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "outpost_screen": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "look_platform": {
+          "role": "platform",
+          "surface": "neutral"
+        },
+        "shell_0": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_1": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_2": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_3": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_4": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_5": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_6": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_7": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_8": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_9": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_10": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_11": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_12": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_13": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_14": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_15": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_16": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_17": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_18": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_19": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_20": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_21": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_22": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_23": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_24": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_25": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_26": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_27": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_28": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_29": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_30": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_31": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_32": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_33": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_34": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_35": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_36": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_37": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_38": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_39": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_40": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_41": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_42": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_43": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_44": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_45": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_46": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_47": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_48": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_49": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_50": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_51": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_52": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_53": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_54": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_55": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_56": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_57": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_58": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_59": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_60": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_61": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "shell_62": {
+          "role": "wall",
+          "surface": "neutral"
+        },
+        "floor_1.2_0": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_1": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_2": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_3": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_4": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_5": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_6": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_7": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_8": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_9": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_10": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_11": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_12": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_1.2_13": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_2.4_0": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_2.4_1": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_2.4_2": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_2.4_3": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_2.4_4": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_2.4_5": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_2.4_6": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_2.4_7": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "floor_2.4_8": {
+          "role": "platform",
+          "surface": "base"
+        },
+        "cover_A": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_B": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_wind_gate": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_wind_wall": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_outpost": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_outpost_e": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_observation": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_specimen": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_specimen_s": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_mid": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_clean": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_clean_s": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_clean_e": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_ice_turn": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_ice_shelter": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_ice_s": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_maintenance": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_maintenance_e": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_equipment": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_equipment_n": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_rear_corner": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_rear_door": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_drill_entry": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_front_drop": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_front_ladder_base": {
+          "role": "prop",
+          "surface": "neutral"
+        },
+        "cover_front_ladder_top": {
+          "role": "prop",
+          "surface": "neutral"
+        }
+      },
+      "buildings": [
+        {
+          "id": "whitebox-shell",
+          "rect": [
+            0,
+            0,
+            144,
+            128
+          ],
+          "base_z": 0,
+          "eave_z": 8,
+          "style": "ridge",
+          "wall_surface": "neutral",
+          "roof": {
+            "type": "flat"
+          },
+          "box_ids": [
+            "shell_0",
+            "shell_1",
+            "shell_2",
+            "shell_3",
+            "shell_4",
+            "shell_5",
+            "shell_6",
+            "shell_7",
+            "shell_8",
+            "shell_9",
+            "shell_10",
+            "shell_11",
+            "shell_12",
+            "shell_13",
+            "shell_14",
+            "shell_15",
+            "shell_16",
+            "shell_17",
+            "shell_18",
+            "shell_19",
+            "shell_20",
+            "shell_21",
+            "shell_22",
+            "shell_23",
+            "shell_24",
+            "shell_25",
+            "shell_26",
+            "shell_27",
+            "shell_28",
+            "shell_29",
+            "shell_30",
+            "shell_31",
+            "shell_32",
+            "shell_33",
+            "shell_34",
+            "shell_35",
+            "shell_36",
+            "shell_37",
+            "shell_38",
+            "shell_39",
+            "shell_40",
+            "shell_41",
+            "shell_42",
+            "shell_43",
+            "shell_44",
+            "shell_45",
+            "shell_46",
+            "shell_47",
+            "shell_48",
+            "shell_49",
+            "shell_50",
+            "shell_51",
+            "shell_52",
+            "shell_53",
+            "shell_54",
+            "shell_55",
+            "shell_56",
+            "shell_57",
+            "shell_58",
+            "shell_59",
+            "shell_60",
+            "shell_61",
+            "shell_62"
+          ]
+        }
+      ],
+      "props": [],
+      "ground": [],
+      "surfaces": {
+        "neutral": {
+          "color": "#b5aca0"
+        },
+        "base": {
+          "color": "#70777b"
+        }
+      },
+      "whitebox": {
+        "targets": {
+          "A": [
+            26.4,
+            15.6,
+            10.8,
+            30,
+            34
+          ],
+          "B": [
+            25,
+            16.4,
+            8.6,
+            29,
+            33
+          ]
+        },
+        "posts": {
+          "A": {
+            "attack": [
+              "observation",
+              "clean_e"
+            ],
+            "defend": [
+              "equipment_n",
+              "A"
+            ]
+          },
+          "B": {
+            "attack": [
+              "ice_s",
+              "drill_e"
+            ],
+            "defend": [
+              "warm_gate",
+              "B"
+            ]
+          }
+        },
+        "spawn_nodes": {
+          "attack": "ts",
+          "defend": "ct"
+        }
+      }
+    },
+    "stairs": [
+      {
+        "id": "stair_wind_wall_outpost",
+        "ramp_id": "rise_wind_wall_outpost",
+        "steps": 5,
+        "axis": "y",
+        "direction": -1,
+        "width": 10,
+        "source_feature_id": "rise_wind_wall_outpost"
+      },
+      {
+        "id": "stair_outpost_e_observation",
+        "ramp_id": "rise_outpost_e_observation",
+        "steps": 5,
+        "axis": "y",
+        "direction": -1,
+        "width": 10,
+        "source_feature_id": "rise_outpost_e_observation"
+      },
+      {
+        "id": "stair_specimen_s_mid",
+        "ramp_id": "rise_specimen_s_mid",
+        "steps": 5,
+        "axis": "x",
+        "direction": 1,
+        "width": 10,
+        "source_feature_id": "rise_specimen_s_mid"
+      },
+      {
+        "id": "stair_clean_s_clean_e",
+        "ramp_id": "rise_clean_s_clean_e",
+        "steps": 5,
+        "axis": "x",
+        "direction": 1,
+        "width": 10,
+        "source_feature_id": "rise_clean_s_clean_e"
+      },
+      {
+        "id": "stair_maintenance_maintenance_e",
+        "ramp_id": "rise_maintenance_maintenance_e",
+        "steps": 5,
+        "axis": "x",
+        "direction": -1,
+        "width": 10,
+        "source_feature_id": "rise_maintenance_maintenance_e"
+      },
+      {
+        "id": "stair_equipment_equipment_n",
+        "ramp_id": "rise_equipment_equipment_n",
+        "steps": 10,
+        "axis": "y",
+        "direction": 1,
+        "width": 10,
+        "source_feature_id": "rise_equipment_equipment_n"
+      }
+    ],
+    "render_ladders": [
+      {
+        "id": "look_ladder",
+        "origin": [
+          126,
+          18,
+          0
+        ],
+        "normal": [
+          -1,
+          0,
+          0
+        ],
+        "width": 2,
+        "z_min": 0,
+        "z_max": 3.6,
+        "bottom_exit": [
+          125.35,
+          18,
+          0
+        ],
+        "top_exit": [
+          126.1,
+          18,
+          3.6
+        ],
+        "source_feature_id": "look_ladder"
+      },
+      {
+        "id": "front_return_ladder",
+        "origin": [
+          112,
+          61,
+          0
+        ],
+        "normal": [
+          0,
+          -1,
+          0
+        ],
+        "width": 2,
+        "z_min": 0,
+        "z_max": 2.4,
+        "bottom_exit": [
+          112,
+          60.35,
+          0
+        ],
+        "top_exit": [
+          112,
+          61.1,
+          2.4
+        ],
+        "source_feature_id": "front_return_ladder"
+      }
+    ]
+  },
+  "frame_hz": 24,
+  "physics_hz": 60,
+  "action_hz": 20
+}
