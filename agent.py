@@ -257,6 +257,7 @@ class Player:
         self.carrier_site_round = None
         self._reset_combat_state()
         self._reset_post_plant_state()
+        self._reset_defend_hold_state()
         self.advance = advance_holds.EMPTY
         self.advance_route_key = None
         self.advance_route_name = None
@@ -348,6 +349,7 @@ class Player:
         self.carrier_site_round = None
         self._reset_combat_state()
         self._reset_post_plant_state()
+        self._reset_defend_hold_state()
         self._reset_waypoint_progress()
         self._reset_retake()
 
@@ -452,6 +454,47 @@ class Player:
         self.post_plant_until = 0
         self.post_plant_spot_since = None
         self.post_plant_force_generic = False
+
+    def _reset_defend_hold_state(self):
+        self.defend_hold_key = None
+        self.defend_hold_plan = None
+        self.defend_hold_spot = 0
+        self.defend_hold_look = 0
+        self.defend_hold_until = 0
+
+    def defend_hold_target(self, o, site, pos, visible_enemy):
+        """Return the current CT peek spot/look for an unplanted site."""
+        if o.get("side") != "defend" or o.get("bomb", {}).get("state") == "planted":
+            return None, None, False
+        plan = self.advance.defend_hold(site["id"])
+        if not plan or not plan.spots:
+            return None, None, False
+        key = (o["round_index"], site["id"])
+        if self.defend_hold_key != key:
+            self.defend_hold_key = key
+            self.defend_hold_plan = plan
+            self.defend_hold_spot = 0
+            self.defend_hold_look = 0
+            self.defend_hold_until = 0
+        spot = plan.spots[self.defend_hold_spot % len(plan.spots)]
+        look = spot.looks[self.defend_hold_look % len(spot.looks)]
+        at_stop = distance(pos, spot.stop) <= POST_PLANT_RADIUS
+        tick = o["match_tick"]
+        if not at_stop or visible_enemy:
+            self.defend_hold_until = 0
+            return spot, look, at_stop
+        if self.defend_hold_until == 0:
+            self.defend_hold_until = tick + look.dwell_ticks
+        elif tick >= self.defend_hold_until:
+            self.defend_hold_look += 1
+            if self.defend_hold_look >= len(spot.looks):
+                self.defend_hold_look = 0
+                self.defend_hold_spot = (self.defend_hold_spot + 1) % len(plan.spots)
+            spot = plan.spots[self.defend_hold_spot % len(plan.spots)]
+            look = spot.looks[self.defend_hold_look % len(spot.looks)]
+            at_stop = distance(pos, spot.stop) <= POST_PLANT_RADIUS
+            self.defend_hold_until = tick + look.dwell_ticks if at_stop else 0
+        return spot, look, at_stop
 
     def _apply_map_hazards(self):
         """Penalize every nav edge touching a permanent hazard node."""
@@ -1523,6 +1566,12 @@ class Player:
             if o["side"] == "attack" and not planted else None)
         site = self.choose_site(o)
         site_id = site["id"]
+        defend_hold_spot = defend_hold_look = None
+        defend_hold_at_stop = False
+        if o["side"] == "defend" and not planted:
+            (defend_hold_spot, defend_hold_look,
+             defend_hold_at_stop) = self.defend_hold_target(
+                 o, site, pos, visible_enemy)
         if planted and o["side"] == "defend":
             self.choose_retake(o, pos, site)
         retake_active = self.retake_route is not None and not self.retake_done
@@ -1562,12 +1611,14 @@ class Player:
         authored_patrol = (
             self.patrol_points(site, "defend")
             if (o["side"] == "defend" and not planted
-                and not m.get("carrying_bomb")) else [])
+                and not m.get("carrying_bomb")
+                and defend_hold_spot is None) else [])
         anchor = None
         advance_aim = None
         advance_points = []
         if (o["side"] == "defend" and not planted
-                and not m.get("carrying_bomb") and not authored_patrol):
+                and not m.get("carrying_bomb") and not authored_patrol
+                and defend_hold_spot is None):
             anchor = self.advance.anchor("defend", site_id)
             if anchor is None:
                 anchor = self.generic_anchor(site)
@@ -1579,7 +1630,9 @@ class Player:
              post_plant_at_stop) = self.post_plant_target(
                 o, site, bomb, pos, visible_enemy)
 
-        if planted and post_plant_spot is not None:
+        if defend_hold_spot is not None:
+            goal = list(defend_hold_spot.stop)
+        elif planted and post_plant_spot is not None:
             goal = list(post_plant_spot.stop)
         elif planted and bomb.get("position"):
             goal = list(bomb["position"])
@@ -1711,6 +1764,12 @@ class Player:
                 o, action,
                 (post_plant_look.aim[0], post_plant_look.aim[1],
                  post_plant_look.aim_z))
+
+        if defend_hold_at_stop and defend_hold_look is not None:
+            return self.hold_aim(
+                o, action,
+                (defend_hold_look.aim[0], defend_hold_look.aim[1],
+                 defend_hold_look.aim_z))
 
         gate_info = self.crouch_gate(pos, goal)
         if gate_info is None and self.gate is not None:

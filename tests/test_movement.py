@@ -1138,6 +1138,40 @@ class NavigationRegression(unittest.TestCase):
 
 
 class AdvanceHoldsRegression(unittest.TestCase):
+    def test_ct_peek_changes_aim_then_exits_on_plant(self):
+        agent.init({})
+        obs = observation(51.5, 87.3, 0.0, round_index=0, tick=0,
+                          match_map=MIRAGE_HOLD_MAP, seat=0, z=15.55)
+        first = agent.act(obs)
+        self.assertEqual(first.get("move_forward"), 0.0)
+        self.assertEqual(first.get("move_right"), 0.0)
+        self.assertEqual(agent._player.defend_hold_look, 0)
+
+        obs.pop("map", None)
+        obs["match_tick"] = 181
+        second = agent.act(obs)
+        self.assertEqual(agent._player.defend_hold_look, 1)
+        self.assertNotEqual(first.get("yaw_rate"), second.get("yaw_rate"))
+        obs["match_tick"] = 362
+        agent.act(obs)
+        self.assertEqual(agent._player.defend_hold_look, 0)
+
+        obs["bomb"] = {"state": "planted", "site": "B",
+                       "position": [107.1, 47.87, 15.94],
+                       "fuse_end_tick": 3000}
+        obs["match_tick"] = 365
+        agent.act(obs)
+        self.assertEqual(agent._player.goal, [107.1, 47.87, 15.94])
+
+    def test_ct_defensive_peek_loops_exist_for_mirage_and_dust2(self):
+        for map_id in ("mirage-cs2-v54", "dust2-cs2-v54"):
+            data = advance_holds.for_map(map_id)
+            for site in ("A", "B"):
+                plan = data.defend_hold(site)
+                self.assertIsNotNone(plan, (map_id, site))
+                self.assertGreaterEqual(len(plan.spots), 1)
+                self.assertGreaterEqual(len(plan.spots[0].looks), 2)
+
     def test_pre_45_anchors_exist_for_all_sampled_maps(self):
         for map_id in ("nevaio-r3-v54", "mirage-cs2-v54",
                        "dust2-cs2-v54", "borgo-r3-v54"):

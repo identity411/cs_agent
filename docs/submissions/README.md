@@ -27,3 +27,4 @@
 | `1113-v0.12` | 2026-11-13 | 已提交；admission passed；main v8 / account2 v11（暂时放弃录制路线；A* 脱离卡点且仍靠近路线时自动接回） | [README](1113-v0.12/README.md) |
 | `1113-v0.13` | 2026-11-13 | 已提交；admission passed；main v9 / account2 v12（Borgo、Molo、Nevaio 用户录制路线） | [README](1113-v0.13/README.md) |
 | `1113-v0.14` | 2026-11-13 | 已提交；admission passed；main v10 / account2 v13（Dust2、Mirage CT 职业 demo 回防路线） | [README](1113-v0.14/README.md) |
+| `1113-v0.15` | 2026-11-13 | 已提交；admission passed；main v11 / account2 v14（Mirage/Dust2 A/B CT 防守 peek loop） | [README](1113-v0.15/README.md) |

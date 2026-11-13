@@ -103,15 +103,21 @@ class PlantHold:
         self.spots = tuple(spots)
 
 
+class DefendHold(PlantHold):
+    """CT pre-plant peek loop: cover spots with discrete entry looks."""
+
+
 class AdvanceMap:
     """Lanes, anchors and post-plant holds for one map id."""
 
-    __slots__ = ("lanes", "anchors", "plant_holds")
+    __slots__ = ("lanes", "anchors", "plant_holds", "defend_holds")
 
-    def __init__(self, lanes=None, anchors=None, plant_holds=None):
+    def __init__(self, lanes=None, anchors=None, plant_holds=None,
+                 defend_holds=None):
         self.lanes = dict(lanes or {})
         self.anchors = dict(anchors or {})
         self.plant_holds = dict(plant_holds or {})
+        self.defend_holds = dict(defend_holds or {})
 
     def lane(self, side, site, name):
         return self.lanes.get((side, site, name))
@@ -126,6 +132,9 @@ class AdvanceMap:
 
     def plant_hold(self, site):
         return self.plant_holds.get(site)
+
+    def defend_hold(self, site):
+        return self.defend_holds.get(site)
 
 
 EMPTY = AdvanceMap()
@@ -182,6 +191,22 @@ MIRAGE = AdvanceMap(
         ("defend", "A"): AdvanceAnchor(
             (51.5, 87.3, 15.55), (52.0, 99.0, 15.43)),
     },
+    defend_holds={
+        # CT A: hold beside the boxes and alternate ramp/palace with jungle.
+        "A": DefendHold("A_ct_peek", "A", (
+            PlantSpot((51.5, 87.3, 15.55), (
+                PlantLook((52.0, 99.0, 15.43)),   # A ramp / palace
+                PlantLook((62.3, 75.5, 17.5)),    # jungle / connector
+            )),
+        )),
+        # CT B: short-side cover, alternating market and apartments.
+        "B": DefendHold("B_ct_peek", "B", (
+            PlantSpot((108.5, 53.8, 15.83), (
+                PlantLook((98.0, 66.0, 17.5)),     # market
+                PlantLook((120.0, 44.0, 16.9)),    # apartments / short
+            )),
+        )),
+    },
     plant_holds={
         # A: hold beside the A-site boxes.  The three looks are the CT
         # spawn retake lane, jungle, and the arch.  Positions are sampled
@@ -230,6 +255,22 @@ DUST2 = AdvanceMap(
     anchors={
         ("defend", "A"): AdvanceAnchor(
             (164.9, 120.9, 22.5), (131.0, 140.0, 20.0)),
+    },
+    defend_holds={
+        # Dust2 A: long and short/cat are the two primary CT checks.
+        "A": DefendHold("A_ct_peek", "A", (
+            PlantSpot((164.9, 120.9, 22.5), (
+                PlantLook((131.0, 140.0, 20.0)),    # long A
+                PlantLook((153.0, 108.0, 24.0)),    # short / cat
+            )),
+        )),
+        # Dust2 B: tunnels and upper/short approach from the back of site.
+        "B": DefendHold("B_ct_peek", "B", (
+            PlantSpot((169.1, 62.3, 20.3), (
+                PlantLook((157.0, 57.0, 21.5)),     # tunnels
+                PlantLook((166.0, 70.0, 23.0)),     # upper / short
+            )),
+        )),
     },
 )
 
