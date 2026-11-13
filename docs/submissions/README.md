@@ -25,3 +25,5 @@
 | `1113-v0.10` | 2026-11-13 | 已提交；admission passed；main v6 / account2 v9（开火距离分层：近距扫射 / 中距只点头 0.7 s / 远距只点头 1 s） | [README](1113-v0.10/README.md) |
 | `1113-v0.11` | 2026-11-13 | 已提交；admission passed；main v7 / account2 v10（战斗记忆 / 目标锁 / 不蹲起；录制路线被队友堵住侧移与放弃） | [README](1113-v0.11/README.md) |
 | `1113-v0.12` | 2026-11-13 | 已提交；admission passed；main v8 / account2 v11（暂时放弃录制路线；A* 脱离卡点且仍靠近路线时自动接回） | [README](1113-v0.12/README.md) |
+| `1113-v0.13` | 2026-11-13 | 已提交；admission passed；main v9 / account2 v12（Borgo、Molo、Nevaio 用户录制路线） | [README](1113-v0.13/README.md) |
+| `1113-v0.14` | 2026-11-13 | 已提交；admission passed；main v10 / account2 v13（Dust2、Mirage CT 职业 demo 回防路线） | [README](1113-v0.14/README.md) |

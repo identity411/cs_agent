@@ -30,6 +30,8 @@
 - **战斗稳定性**：[11-13-combat-stability.md](11-13-combat-stability.md) — `5466919c` R19（`round_index 18`）击杀第一人后可见性闪烁导致目标/蹲起/移动抽搐；R18（`round_index 17`）录制路线被卡住的队友堵在 T 出生点 114 s。新增 18-tick 战斗记忆、目标锁、移除战斗蹲起、录制轨迹无进度侧移与暂时放弃；A* 脱离卡点且仍靠近路线时自动接回录制帧。本地 88/88 测试通过。
 - **v0.11 提交**：[`1113-v0.11`](../submissions/1113-v0.11/README.md) — 战斗稳定性修复随包提交；`main` version `7`、`account2` version `10` admission 均 `passed` 并激活，entry code hash `a77f1c7e5b22`；待新对局验证。
 - **v0.12 提交**：[`1113-v0.12`](../submissions/1113-v0.12/README.md) — A* 脱离卡点且距剩余录制路线 ≤8 m 时自动接回前向录制帧；`main` version `8`、`account2` version `11` admission 均 `passed` 并激活，entry code hash `d0bfe8b88034`；本地 88/88 测试通过，待新对局验证。
+- **v0.13 提交**：[`1113-v0.13`](../submissions/1113-v0.13/README.md) — Borgo、Molo、Nevaio 三条用户录制轨迹接入；带包者在目标包点前 12 m 切换 A* 下包，下包后守包。`main` version `9`、`account2` version `12` admission 均 `passed` 并激活，entry code hash `6445465bb5ae`；待新对局验证。
+- **v0.14 提交**：[`1113-v0.14`](../submissions/1113-v0.14/README.md) — Dust2/Mirage 职业 demo CT 对侧下包回防路线接入；全程冲刺跟随示范位置和视角，遇敌暂停交战后续走，路线结束直奔炸弹，实际卡住才用 A* 脱困。`main` version `10`、`account2` version `13` admission 均 `passed` 并激活，entry code hash `fcc52013a804`；待新对局验证。见 [11-13-pro-demo-routes.md](11-13-pro-demo-routes.md)。
 
 ## 实测状态（2026-11-12）
 
@@ -117,6 +119,8 @@ badcase 采用 `MM-DD-<theme>.md` 命名；新 badcase 按日期追加，不改�
 | `1113-v0.10` | [1113-v0.10/README.md](../submissions/1113-v0.10/README.md) | [11-13-fire-range-bands.md](11-13-fire-range-bands.md) |
 | `1113-v0.11` | [1113-v0.11/README.md](../submissions/1113-v0.11/README.md) | [11-13-combat-stability.md](11-13-combat-stability.md), [11-13-fire-range-bands.md](11-13-fire-range-bands.md) |
 | `1113-v0.12` | [1113-v0.12/README.md](../submissions/1113-v0.12/README.md) | [11-13-combat-stability.md](11-13-combat-stability.md) |
+| `1113-v0.13` | [1113-v0.13/README.md](../submissions/1113-v0.13/README.md) | [11-12-pathing-routes.md](11-12-pathing-routes.md) |
+| `1113-v0.14` | [1113-v0.14/README.md](../submissions/1113-v0.14/README.md) | [11-13-pro-demo-routes.md](11-13-pro-demo-routes.md) |
 
 ## 待补 / 待核实
 

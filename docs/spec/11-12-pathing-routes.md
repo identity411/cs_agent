@@ -1,8 +1,8 @@
 # 规范：A* 寻路、地图进攻路线与移动/战斗控制
 
-Status: **2026-11-13 Dust2 用户轨迹跟随随 `1113-v0.06`（account2 v5）、VIP 狗洞 crouch / 推进预瞄锚点随 `1113-v0.07`（account2 v6）提交并激活；原有 `1112-v0.04` 仍为 main version 4。全量 unittest 66/66 通过；正式对局效果待验证。**
+Status: **2026-11-13 Borgo、Molo、Nevaio 用户轨迹与带包切换随 `1113-v0.13` 提交并激活：main version 9、account2 version 12；正式对局效果待验证。**
 Date: 2026-11-12
-Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照）· [1113-v0.05](../submissions/1113-v0.05/README.md)（Dust2 用户轨迹跟随）· [1113-v0.06](../submissions/1113-v0.06/README.md)（原地准星帧修正）· [1113-v0.09](../submissions/1113-v0.09/README.md)（Mirage 录制轨迹）· [11-12-advance-holds.md](./11-12-advance-holds.md)（下游：寻路之后的推进点 / 预瞄角 / 刹停）· [11-12-mirage-spawn-jump.md](./11-12-mirage-spawn-jump.md)（Mirage R6/R10 与 CT A 卡台阶）· [11-12-match-observability.md](./11-12-match-observability.md)（卡死/到点/回防指标）· [11-12-stuck-at-spawn.md](./11-12-stuck-at-spawn.md)（出生点卡住）· [11-12-site-center-hold.md](./11-12-site-center-hold.md)（包点中心 hold）· [maps.md](./maps.md)（nav / bot_waypoints 边界）· [agent-interface.md](./agent-interface.md)（动作字段）
+Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照）· [1113-v0.05](../submissions/1113-v0.05/README.md)（Dust2 用户轨迹跟随）· [1113-v0.06](../submissions/1113-v0.06/README.md)（原地准星帧修正）· [1113-v0.09](../submissions/1113-v0.09/README.md)（Mirage 录制轨迹）· [1113-v0.13](../submissions/1113-v0.13/README.md)（R3 三图轨迹与带包切换）· [11-12-advance-holds.md](./11-12-advance-holds.md)（下游：寻路之后的推进点 / 预瞄角 / 刹停）· [11-12-mirage-spawn-jump.md](./11-12-mirage-spawn-jump.md)（Mirage R6/R10 与 CT A 卡台阶）· [11-12-match-observability.md](./11-12-match-observability.md)（卡死/到点/回防指标）· [11-12-stuck-at-spawn.md](./11-12-stuck-at-spawn.md)（出生点卡住）· [11-12-site-center-hold.md](./11-12-site-center-hold.md)（包点中心 hold）· [maps.md](./maps.md)（nav / bot_waypoints 边界）· [agent-interface.md](./agent-interface.md)（动作字段）
 
 ## 0. 目标
 
@@ -79,9 +79,15 @@ Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照�
 5. 每回合 / 每个包点缓存一次选择；
 6. 进入 `site.radius` 内后不再走 lane；T 方下包前不使用 patrol（避免在 `radius+12` 边界来回切 goal），下包后才用 `watch<site>_T`。
 
-没有 `attackRoutes` 的地图（nevaio/borgo）回退到 A* 直达 site center；不硬编码地图路线。
+没有 `attackRoutes` 和匹配录制轨迹的地图回退到 A* 直达 site center。
 
-### 2.5 旧卡点 soft hazard 与 `map_patches.py`
+### 2.5 R3 三图录制轨迹与带包切换
+
+`borgo-r3-v54`、`molo-r3-v54`、`nevaio-r3-v54` 分别使用用户录制的 A、B、A 进攻轨迹；仅地图 ID 与几何哈希均匹配时启用。轨迹按实时位置和视角反馈跟随，遇敌暂停并射击，脱离卡点后可经 A* 接回。
+
+带包者使用录制轨迹直到距目标包点 12 m，或到达编译时确定的截止帧；之后不再接回轨迹，改用 A* 前往 `plant_point(site)`。进入合法 `plant_zones` 后使用 `plant`，炸弹状态变为 `planted` 后使用既有 post-plant watch 逻辑。未带包者仍可走完整录制轨迹。
+
+### 2.6 旧卡点 soft hazard 与 `map_patches.py`
 
 所有地图坐标和阈值都不再写在 `agent.py`。根目录 `map_patches.py` 的 `MapPatch` 是 agent 读取的抽象修补层：
 
@@ -107,7 +113,7 @@ patch.step_jump_radius                # 台阶跳水平距离
 - 新增地图修补只改 `map_patches.py`，不改 `agent.py` 的地图分支。
 - 低矮通道（蹲行狗洞）用 `MapPatch.crouch_gates` 描述；`agent.traverse_gate()` 会 `crouch=True` 直行通过并**禁止跳跃**，穿过后重新 A*。Mirage VIP `(75.3,66.2)` 的取证见 [11-13-mirage-vip-doghole.md](./11-13-mirage-vip-doghole.md)。
 
-### 2.6 本地 nav 模拟
+### 2.7 本地 nav 模拟
 
 `scripts/simulate_nav.py` 使用平台自己的 `public_static`（2242 nodes / 6275 edges）作为固定输入，20 Hz 运动学推进 agent 动作；它不是碰撞模拟，但可以重复验证：
 

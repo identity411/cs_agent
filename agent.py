@@ -4,16 +4,43 @@ import math
 
 import advance_holds
 import map_patches
+import pro_retakes
+
+
+def pro_retake_routes(map_id, geometry_hash):
+    item = pro_retakes.MAPS.get(map_id)
+    return item["routes"] if item and item["hash"] == geometry_hash else None
+
+
+def recorded_route_info(map_id, geometry_hash):
+    if map_id == "dust2-cs2-v54":
+        from dust2_replay import MAP_HASH, ROUTE
+        site, cutoff = None, len(ROUTE) - 1
+    elif map_id == "mirage-cs2-v54":
+        from mirage_replay import MAP_HASH, ROUTE
+        site, cutoff = None, len(ROUTE) - 1
+    elif map_id == "borgo-r3-v54":
+        from borgo_replay import MAP_HASH, ROUTE, SITE, CARRIER_CUTOFF
+        site, cutoff = SITE, CARRIER_CUTOFF
+    elif map_id == "molo-r3-v54":
+        from molo_replay import MAP_HASH, ROUTE, SITE, CARRIER_CUTOFF
+        site, cutoff = SITE, CARRIER_CUTOFF
+    elif map_id == "nevaio-r3-v54":
+        from nevaio_replay import MAP_HASH, ROUTE, SITE, CARRIER_CUTOFF
+        site, cutoff = SITE, CARRIER_CUTOFF
+    else:
+        return None
+    return (ROUTE, site, cutoff) if geometry_hash == MAP_HASH else None
 
 
 def recorded_route(map_id, geometry_hash):
-    if map_id == "dust2-cs2-v54":
-        from dust2_replay import MAP_HASH, ROUTE
-    elif map_id == "mirage-cs2-v54":
-        from mirage_replay import MAP_HASH, ROUTE
-    else:
-        return None
-    return ROUTE if geometry_hash == MAP_HASH else None
+    info = recorded_route_info(map_id, geometry_hash)
+    return info[0] if info else None
+
+
+def recorded_site(map_id, geometry_hash):
+    info = recorded_route_info(map_id, geometry_hash)
+    return info[1] if info else None
 
 # Navigation tolerances.  The waypoint radius is deliberately larger than
 # 1 m: a 1 m radius makes the agent turn back to a node it has just passed
@@ -95,6 +122,8 @@ REPLAY_REJOIN_DISTANCE = 8.0   # rejoin only when this close to the lane
 HOLD_LOOK_DWELL = 3.0          # seconds per plant-hold look direction
 POST_PLANT_RADIUS = 2.0        # 3D arrival radius for a plant-hold spot
 POST_PLANT_TIMEOUT_TICKS = 640  # ~10 s; fall back to guarding the bomb
+RETAKE_ORIGIN_PAD = 18.0        # CT must still be defending the other site
+RETAKE_JOIN_DISTANCE = 6.0     # steer directly to a distant demo lane
 
 
 def clip(value):
@@ -243,6 +272,7 @@ class Player:
         self.replay_done = False
         self.replay_abandoned = False
         self._reset_replay_avoid()
+        self._reset_retake()
 
     @staticmethod
     def _first_spawn(row, side, pad_side):
@@ -319,6 +349,7 @@ class Player:
         self._reset_combat_state()
         self._reset_post_plant_state()
         self._reset_waypoint_progress()
+        self._reset_retake()
 
     def _reset_waypoint_progress(self):
         self.wp_point, self.wp_ticks = None, 0
@@ -344,6 +375,74 @@ class Player:
         self.replay_avoid_attempts = 0
         self.replay_abandon_pos = None
         self.replay_rejoin_count = 0
+
+    def _reset_retake(self):
+        self.retake_checked = False
+        self.retake_route = None
+        self.retake_cursor = 0
+        self.retake_done = False
+        self.retake_anchor_pos = None
+        self.retake_anchor_tick = 0
+
+    def choose_retake(self, o, pos, target_site):
+        if self.retake_checked:
+            return
+        self.retake_checked = True
+        if o["side"] != "defend" or target_site["id"] not in ("A", "B"):
+            return
+        origin_id = "B" if target_site["id"] == "A" else "A"
+        origin = next((s for s in self.sites if s["id"] == origin_id), None)
+        if (origin is None or distance(pos[:2], origin["center"][:2])
+                > origin["radius"] + RETAKE_ORIGIN_PAD):
+            return
+        routes = pro_retake_routes(self.map_id, o.get("static_schema_hash"))
+        if not routes:
+            return
+        options = routes[f"{origin_id}_to_{target_site['id']}"]
+        best = min(options, key=lambda r: (
+            distance(pos[:2], r["frames"][0][:2])
+            - 2.0 * r["aim_forward_fraction"]))
+        self.retake_route = tuple(frame + (16,) for frame in best["frames"])
+
+    @staticmethod
+    def retake_direct(o, pos, action, target):
+        dx, dy = target[0] - pos[0], target[1] - pos[1]
+        error = angle(math.atan2(-dy, dx) - o["me"]["yaw"])
+        action.update(move_forward=math.cos(error),
+                      move_right=-math.sin(error),
+                      yaw_rate=clip(error / 0.15),
+                      pitch_rate=clip(-o["me"]["pitch"] / 0.1),
+                      sprint=True, walk=False, crouch=False)
+        return action
+
+    def follow_retake(self, o, pos, action, bomb_position):
+        frames = self.retake_route
+        if self.retake_done or not frames:
+            return None
+        tick = o["match_tick"]
+        if (self.retake_anchor_pos is None
+                or distance(pos[:2], self.retake_anchor_pos) > 0.3):
+            self.retake_anchor_pos, self.retake_anchor_tick = list(pos[:2]), tick
+        elif tick - self.retake_anchor_tick >= REPLAY_BLOCK_TICKS:
+            self.retake_done = True
+            return None
+        first = frames[0]
+        if (self.retake_cursor == 0
+                and distance(pos[:2], first[:2]) > RETAKE_JOIN_DISTANCE):
+            return self.retake_direct(o, pos, action, first)
+        cursor, steering = follow_trajectory(
+            frames, self.retake_cursor, pos, o["me"]["yaw"], o["me"]["pitch"])
+        self.retake_cursor = cursor
+        if (cursor >= len(frames) - 1
+                or (cursor >= len(frames) - 8
+                    and distance(pos[:2], frames[-1][:2]) < 2.0)):
+            self.retake_cursor = len(frames) - 1
+            return self.retake_direct(o, pos, action, bomb_position)
+        elif distance(pos[:2], frames[cursor][:2]) > RETAKE_JOIN_DISTANCE:
+            return self.retake_direct(o, pos, action, frames[cursor])
+        steering["sprint"] = True
+        steering["walk"] = False
+        return dict(action, **steering)
 
     def _reset_post_plant_state(self):
         self.post_plant_key = None
@@ -902,6 +1001,13 @@ class Player:
             return min(self.sites,
                        key=lambda site: distance(bomb["position"],
                                                  site["center"]))
+        if o["side"] == "attack":
+            route_site = recorded_site(
+                self.map_id, o.get("static_schema_hash"))
+            if route_site in sites:
+                self.carrier_site = route_site
+                self.carrier_site_round = o["round_index"]
+                return sites[route_site]
         carrying = o["me"].get("carrying_bomb")
         # Cache the T-side site for the whole round.  `carrier_site` is the
         # shared site decision, not only the bomb carrier's own target.
@@ -1396,6 +1502,7 @@ class Player:
             self.replay_done = False
             self.replay_abandoned = False
             self._reset_replay_avoid()
+            self._reset_retake()
         m = o["me"]
         if not m["alive"] or o["phase"] not in ("buy", "live"):
             return {}
@@ -1411,13 +1518,30 @@ class Player:
         bomb = o["bomb"]
         planted = bomb.get("state") == "planted"
         visible_enemy = bool(o.get("visible")) and not m.get("blind_ticks")
-        replay_route = (recorded_route(
+        replay_info = (recorded_route_info(
             self.map_id, o.get("static_schema_hash"))
             if o["side"] == "attack" and not planted else None)
-        replay_active = replay_route is not None
         site = self.choose_site(o)
         site_id = site["id"]
+        if planted and o["side"] == "defend":
+            self.choose_retake(o, pos, site)
+        retake_active = self.retake_route is not None and not self.retake_done
+        carrying = bool(m.get("carrying_bomb"))
+        replay_route = replay_info[0] if replay_info else None
+        carrier_cutoff = None
+        if replay_info and carrying:
+            if replay_info[1] is not None and replay_info[1] != site_id:
+                replay_route = None
+            elif replay_info[1] is not None:
+                carrier_cutoff = replay_info[2]
+                replay_route = replay_route[:carrier_cutoff + 1]
+        replay_active = replay_route is not None
         site_distance = distance(pos, site["center"])
+        if (replay_active and carrier_cutoff is not None
+                and site_distance <= 12.0):
+            self.replay_done = True
+            self.replay_abandoned = False
+            self.replay_rejoin_index = None
         near_site = site_distance <= (
             site["radius"] + PATROL_NEAR_SITE_PAD)
         route_near = site_distance <= site["radius"]
@@ -1542,7 +1666,9 @@ class Player:
 
         if visible_enemy:
             self.combat_memory_until = tick + COMBAT_MEMORY_TICKS
-            if replay_active:
+            if replay_active or retake_active:
+                if retake_active:
+                    self.retake_anchor_pos = None
                 action = self.combat(o, action, gun)
                 if action.get("fire"):
                     self.combat_last_fire_tick = tick
@@ -1572,6 +1698,8 @@ class Player:
             return action
         elif (tick < self.combat_memory_until
               and self.combat_last_target is not None):
+            if retake_active:
+                self.retake_anchor_pos = None
             return self.combat_wait(o, action, self.combat_last_target)
         else:
             self._reset_combat_state()
@@ -1597,6 +1725,12 @@ class Player:
             return self.hold_aim(
                 o, action, (anchor.aim[0], anchor.aim[1], anchor.aim_z))
 
+        if retake_active:
+            retake_action = self.follow_retake(o, pos, action,
+                                               bomb.get("position") or site["center"])
+            if retake_action is not None:
+                return retake_action
+
         if replay_active and self.replay_abandoned and not visible_enemy:
             self.maybe_rejoin_replay(o, pos, replay_route)
 
@@ -1609,6 +1743,8 @@ class Player:
             cursor, replay_action = follow_trajectory(
                 replay_route, self.replay_cursor, pos, m["yaw"], m["pitch"])
             self.replay_cursor = cursor
+            if carrier_cutoff is not None and cursor >= len(replay_route) - 2:
+                self.replay_done = True
             if (cursor >= len(replay_route) - 80
                     and distance(pos, replay_route[-1][:3]) < 1.5):
                 self.replay_done = True
