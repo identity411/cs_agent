@@ -69,6 +69,14 @@ test('one-click retake selects a CT start near the opposite site', () => {
   assert.ok(Math.hypot(bToA.position[0] - b[0], bToA.position[1] - b[1]) < 15);
 });
 
+test('one-click retake keeps a selected CT point near its origin site', () => {
+  const mirage = MAPS.find(item => item.key === 'mirage').staticMap.map;
+  const sofa = chooseStart(mirage, 'mirage:B_sofa');
+  const retake = retakeStart(mirage, 'B', 'A', sofa);
+  assert.deepEqual(retake.position, sofa.position);
+  assert.equal(retake.targetSite, 'A');
+});
+
 test('jump rises, lands, and cannot relaunch while airborne', () => {
   let state = {height: 0, velocity: 0, grounded: true};
   state = advanceJump(state, true, 0, 1 / 20);

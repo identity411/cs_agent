@@ -41,7 +41,8 @@ export function validateRecording(recording) {
   if (recording.start && (!Array.isArray(recording.start.position) ||
       recording.start.position.length !== 3 ||
       !recording.start.position.every(Number.isFinite) ||
-      !Number.isFinite(recording.start.yaw))) {
+      !Number.isFinite(recording.start.yaw) ||
+      (recording.start.pitch !== undefined && !Number.isFinite(recording.start.pitch)))) {
     throw new Error('invalid start');
   }
   for (let i = 0; i < recording.frames.length; i++) {

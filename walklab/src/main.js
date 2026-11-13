@@ -24,6 +24,8 @@ viewport.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#9fb5bf');
 scene.fog = new THREE.Fog('#9fb5bf', 85, 240);
+const normalBackground = scene.background;
+const normalFog = scene.fog;
 scene.add(new THREE.HemisphereLight(0xffffff, 0x50616a, 2.0));
 const sun = new THREE.DirectionalLight(0xffe2ac, 2.2);
 sun.position.set(80, 150, 45);
@@ -47,6 +49,7 @@ let purpose = null;
 let originSite = null;
 let targetSite = null;
 let pickingStart = false;
+let savedStarts = [];
 let jumpState = {height: start.position[2], velocity: 0, grounded: true};
 let lastFloorHeight = start.position[2];
 let jumpQueued = false;
@@ -75,7 +78,9 @@ const ui = Object.fromEntries(['record', 'play', 'export', 'timeline', 'time', '
   'angles', 'frames', 'inputs', 'path-summary', 'view-status', 'asset-note', 'click-prompt',
   'model-file', 'recording-file', 'rerecord', 'map-select', 'map-id', 'side-t', 'side-ct',
   'start-select', 'pick-start', 'use-position', 'retake-a-b', 'retake-b-a',
-  'side-label', 'start-label', 'purpose-label'].map(id => [id, document.getElementById(id)]));
+  'side-label', 'start-label', 'purpose-label', 'point-name', 'save-point',
+  'edit-point', 'delete-point',
+  'point-status'].map(id => [id, document.getElementById(id)]));
 
 function buildMapVisuals() {
   const nodeById = new Map(map.nav.nodes.map(node => [node.id, node.position]));
@@ -128,11 +133,29 @@ function updateStartDisplay() {
   startMarker.position.set(start.position[0], start.position[2] + 0.05, start.position[1]);
 }
 
+function updatePickView() {
+  if (collisionMesh) collisionMesh.visible = !pickingStart;
+  mapObjects.traverse(object => {
+    if (object.isPoints) {
+      object.material.color.setHex(pickingStart ? 0x81d7a3 : 0x226b58);
+      object.material.size = pickingStart ? 0.75 : 0.42;
+    } else if (object.isLineSegments) {
+      object.material.color.setHex(pickingStart ? 0x72bfaa : 0x62887a);
+      object.material.opacity = pickingStart ? 0.65 : 0.24;
+    }
+  });
+  scene.background = pickingStart ? new THREE.Color('#243238') : normalBackground;
+  scene.fog = pickingStart ? null : normalFog;
+  ui['click-prompt'].textContent = pickingStart
+    ? '俯视图中点击位置，自动贴近可走点'
+    : '移动鼠标转视角 · 双击锁定鼠标';
+}
+
 function setStart(choice, nextSide = choice.side || side) {
   side = nextSide;
   start = {...choice, position: [...choice.position]};
   purpose = null; originSite = null; targetSite = null;
-  pose.position = [...start.position]; pose.yaw = start.yaw; pose.pitch = 0;
+  pose.position = [...start.position]; pose.yaw = start.yaw; pose.pitch = start.pitch ?? 0;
   jumpState = {height: pose.position[2], velocity: 0, grounded: true};
   lastFloorHeight = pose.position[2];
   jumpQueued = false;
@@ -142,26 +165,68 @@ function setStart(choice, nextSide = choice.side || side) {
   ui.timeline.value = '0'; ui.timeline.max = '0';
   pickingStart = false;
   ui['pick-start'].classList.remove('active');
+  updatePickView();
   if (ui['start-select'].querySelector(`option[value="${choice.id}"]`)) {
     ui['start-select'].value = choice.id;
   } else {
     ui['start-select'].value = 'custom';
   }
   updateStartDisplay();
+  if (choice.id.startsWith('saved:')) ui['point-name'].value = choice.label;
+  updateSavedControls();
   setMode('idle');
 }
 
+function selectedSavedPoint() {
+  return savedStarts.find(item => item.id === ui['start-select'].value);
+}
+
+function updateSavedControls() {
+  const enabled = Boolean(selectedSavedPoint());
+  ui['edit-point'].disabled = !enabled;
+  ui['delete-point'].disabled = !enabled;
+}
+
+async function apiJson(response) {
+  const raw = await response.text();
+  let data;
+  try { data = JSON.parse(raw); }
+  catch { throw new Error('点位服务不可用，请打开新启动的 Walklab 地址'); }
+  if (!response.ok) throw new Error(data.error || '点位操作失败');
+  return data;
+}
+
 function fillStarts() {
+  const selected = ui['start-select'].value;
   ui['start-select'].replaceChildren();
-  for (const choice of spawnChoices(map)) {
+  for (const choice of [...spawnChoices(map), ...savedStarts]) {
     const option = document.createElement('option');
     option.value = choice.id;
-    option.textContent = choice.label;
+    option.textContent = choice.id.startsWith('saved:') ? `已存 · ${choice.label}` : choice.label;
     ui['start-select'].append(option);
   }
   const custom = document.createElement('option');
   custom.value = 'custom'; custom.textContent = '自选点位'; custom.disabled = true;
   ui['start-select'].append(custom);
+  if (selected && ui['start-select'].querySelector(`option[value="${selected}"]`)) {
+    ui['start-select'].value = selected;
+  }
+  updateSavedControls();
+}
+
+async function loadSavedStarts(version) {
+  try {
+    const query = new URLSearchParams({mapId: map.id, mapHash: map.geometry_hash});
+    const response = await fetch(`/api/start-points?${query}`);
+    const points = await apiJson(response);
+    if (version !== mapLoadVersion) return;
+    savedStarts = points.map(point => ({id: `saved:${point.id}`, label: point.name,
+      position: point.position, yaw: point.yaw, pitch: point.pitch ?? 0,
+      side: point.side}));
+    fillStarts();
+  } catch (error) {
+    if (version === mapLoadVersion) ui['point-status'].textContent = error.message;
+  }
 }
 
 function applyPose() {
@@ -250,16 +315,18 @@ function setMode(next) {
 function startFreshRecording() {
   pickingStart = false;
   ui['pick-start'].classList.remove('active');
+  updatePickView();
   pose.position = [...start.position];
   pose.yaw = start.yaw;
-  pose.pitch = 0;
+  pose.pitch = start.pitch ?? 0;
   jumpState = {height: start.position[2], velocity: 0, grounded: true};
   lastFloorHeight = start.position[2];
   jumpQueued = false;
   keys.clear();
   recording = createRecording({mapId: map.id, mapHash: map.geometry_hash, hz,
     side, purpose, originSite, targetSite,
-    start: {position: [...start.position], yaw: start.yaw, source: start.id}});
+    start: {position: [...start.position], yaw: start.yaw,
+      pitch: start.pitch ?? 0, source: start.id}});
   recording.assetName = modelName;
   tick = 0; playIndex = 0; routePoints.length = 0; updateTrail();
   setMode('recording');
@@ -334,9 +401,78 @@ ui['map-select'].onchange = () => selectMap(ui['map-select'].value);
 ui.rerecord.onclick = startFreshRecording;
 ui['side-t'].onclick = () => setStart(chooseStart(map, 'T:0'), 'attack');
 ui['side-ct'].onclick = () => setStart(chooseStart(map, 'CT:0'), 'defend');
-ui['start-select'].onchange = () => setStart(chooseStart(map, ui['start-select'].value));
+ui['start-select'].onchange = () => {
+  const id = ui['start-select'].value;
+  setStart(savedStarts.find(item => item.id === id) || chooseStart(map, id));
+};
+ui['save-point'].onclick = async () => {
+  const name = ui['point-name'].value.trim();
+  if (!name) { ui['point-status'].textContent = '请填写点位名称'; return; }
+  ui['save-point'].disabled = true;
+  try {
+    const version = mapLoadVersion;
+    const response = await fetch('/api/start-points', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mapId: map.id, mapHash: map.geometry_hash,
+        name, side, position: [...pose.position], yaw: pose.yaw, pitch: pose.pitch})});
+    const result = await apiJson(response);
+    if (version !== mapLoadVersion) return;
+    savedStarts.push({id: `saved:${result.id}`, label: result.name,
+      position: result.position, yaw: result.yaw, pitch: result.pitch, side: result.side});
+    fillStarts();
+    ui['point-name'].value = '';
+    ui['point-status'].textContent = `已保存：${result.name}`;
+  } catch (error) { ui['point-status'].textContent = error.message; }
+  finally { ui['save-point'].disabled = false; }
+};
+ui['edit-point'].onclick = async () => {
+  const selected = selectedSavedPoint();
+  if (!selected) return;
+  const version = mapLoadVersion;
+  ui['edit-point'].disabled = true;
+  try {
+    const response = await fetch(`/api/start-points/${encodeURIComponent(selected.id.slice(6))}`,
+      {method: 'PATCH', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mapId: map.id, mapHash: map.geometry_hash,
+          name: ui['point-name'].value.trim(), side,
+          position: [...pose.position], yaw: pose.yaw, pitch: pose.pitch})});
+    const result = await apiJson(response);
+    if (version !== mapLoadVersion) return;
+    selected.label = result.name;
+    selected.position = result.position;
+    selected.yaw = result.yaw;
+    selected.pitch = result.pitch;
+    selected.side = result.side;
+    start = {...selected, position: [...selected.position]};
+    fillStarts();
+    updateStartDisplay();
+    ui['point-status'].textContent = `已更新：${result.name}`;
+  } catch (error) { ui['point-status'].textContent = error.message; }
+  finally { updateSavedControls(); }
+};
+ui['delete-point'].onclick = async () => {
+  const selected = selectedSavedPoint();
+  if (!selected || !confirm(`删除点位“${selected.label}”？`)) return;
+  const version = mapLoadVersion;
+  ui['delete-point'].disabled = true;
+  try {
+    const query = new URLSearchParams({mapId: map.id, mapHash: map.geometry_hash});
+    await apiJson(await fetch(`/api/start-points/${encodeURIComponent(selected.id.slice(6))}?${query}`,
+      {method: 'DELETE'}));
+    if (version !== mapLoadVersion) return;
+    savedStarts = savedStarts.filter(item => item.id !== selected.id);
+    start = {id: 'custom', label: '当前位置', position: [...pose.position],
+      yaw: pose.yaw, pitch: pose.pitch, side};
+    fillStarts();
+    ui['start-select'].value = 'custom';
+    updateStartDisplay();
+    ui['point-name'].value = '';
+    ui['point-status'].textContent = `已删除：${selected.label}`;
+  } catch (error) { ui['point-status'].textContent = error.message; }
+  finally { updateSavedControls(); }
+};
 ui['use-position'].onclick = () => setStart({id: 'custom', label: '当前位置',
-  position: [...pose.position], yaw: pose.yaw});
+  position: [...pose.position], yaw: pose.yaw, pitch: pose.pitch});
 ui['pick-start'].onclick = () => {
   pickingStart = !pickingStart;
   ui['pick-start'].classList.toggle('active', pickingStart);
@@ -344,15 +480,15 @@ ui['pick-start'].onclick = () => {
     if (mode === 'recording') setMode('paused');
     document.exitPointerLock?.();
     framePickCamera();
-    ui['click-prompt'].textContent = '俯视图中点击位置，自动贴近可走点';
-  } else {
-    ui['click-prompt'].textContent = '移动鼠标转视角 · 双击锁定鼠标';
   }
+  updatePickView();
 };
 for (const [id, origin, target] of [['retake-a-b', 'A', 'B'],
   ['retake-b-a', 'B', 'A']]) {
   ui[id].onclick = () => {
-    setStart(retakeStart(map, origin, target), 'defend');
+    const preferred = start.id === 'custom' || start.id.startsWith('saved:') ||
+      start.id.includes('sofa') || start.id.includes('boxes') ? {...start, side} : null;
+    setStart(retakeStart(map, origin, target, preferred), 'defend');
     purpose = 'retake'; originSite = origin; targetSite = target;
     updateStartDisplay();
     startFreshRecording();
@@ -437,7 +573,8 @@ renderer.domElement.addEventListener('click', event => {
   const point = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
     new THREE.Vector3());
   if (!point) return;
-  setStart({...nearestNavStart(map, point.x, point.z), yaw: pose.yaw});
+  setStart({...nearestNavStart(map, point.x, point.z), yaw: pose.yaw,
+    pitch: pose.pitch});
 });
 document.addEventListener('keydown', event => {
   if (event.target instanceof HTMLInputElement ||
@@ -463,8 +600,9 @@ document.addEventListener('mousemove', event => {
 });
 document.addEventListener('pointerlockchange', () => {
   lastPointer = null;
-  ui['click-prompt'].textContent = document.pointerLockElement === renderer.domElement
-    ? '' : '移动鼠标转视角 · 双击锁定鼠标';
+  ui['click-prompt'].textContent = pickingStart ? '俯视图中点击位置，自动贴近可走点'
+    : document.pointerLockElement === renderer.domElement
+      ? '' : '移动鼠标转视角 · 双击锁定鼠标';
 });
 window.addEventListener('blur', () => { keys.clear(); jumpQueued = false; });
 new ResizeObserver(() => {
@@ -486,6 +624,8 @@ async function selectMap(key) {
   keys.clear(); pointerInside = false; lastPointer = null;
   selectedMap = entry;
   map = entry.staticMap.map;
+  savedStarts = [];
+  ui['point-status'].textContent = '';
   side = 'attack';
   start = chooseStart(map, 'T:0');
   purpose = null; originSite = null; targetSite = null;
@@ -493,6 +633,7 @@ async function selectMap(key) {
   jumpState = {height: pose.position[2], velocity: 0, grounded: true};
   lastFloorHeight = pose.position[2];
   jumpQueued = false; pickingStart = false;
+  updatePickView();
   scene.remove(mapObjects);
   mapObjects.traverse(object => {
     object.geometry?.dispose();
@@ -510,6 +651,7 @@ async function selectMap(key) {
   ui['map-select'].value = key;
   fillStarts();
   ui['start-select'].value = 'T:0';
+  loadSavedStarts(version);
   updateStartDisplay();
   const url = new URL(location.href);
   url.searchParams.set('map', key);

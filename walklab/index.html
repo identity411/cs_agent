@@ -14,6 +14,11 @@
         <select id="start-select" aria-label="选择录制起点"></select>
         <button id="pick-start" type="button">点选起点</button>
         <button id="use-position" type="button">当前位置</button>
+        <input id="point-name" type="text" maxlength="40" placeholder="点位名称" aria-label="点位名称" />
+        <button id="save-point" type="button">保存当前点位</button>
+        <button id="edit-point" type="button" disabled>更新所选点位</button>
+        <button id="delete-point" type="button" disabled>删除所选点位</button>
+        <span id="point-status" role="status"></span>
       </div>
       <div class="commands">
         <div class="retake-control" role="group" aria-label="一键录制回防"><button id="retake-a-b" type="button">A → B 回防</button><button id="retake-b-a" type="button">B → A 回防</button></div>

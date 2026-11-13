@@ -21,6 +21,8 @@ button.active { background: #b5483c; border-color: #d36355; }
 .side-control button + button { border-left: 0; }
 .side-control .selected { background: #327966; border-color: #64b59b; }
 #start-select { max-width: 170px; }
+#point-name { width: 124px; height: 34px; border: 1px solid #545d64; background: #30383e; color: #f2f3f4; padding: 0 9px; }
+#point-status { color: #8bd0ae; font-size: 12px; }
 .retake-control button { border-color: #756847; color: #f4d999; }
 .commands { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
 main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0,1fr) 266px; }
