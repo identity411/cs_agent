@@ -27,8 +27,9 @@
 - **v0.09 提交**：[`1113-v0.09`](../submissions/1113-v0.09/README.md) — Mirage 用户录制 1410 帧进攻轨迹，仅在地图 ID/哈希匹配时启用位置与准星反馈跟随；`account2` version `8` admission `passed` 并激活。
 - **开火距离分层**：[11-13-fire-range-bands.md](11-13-fire-range-bands.md) — 近距（≤ Mirage A 中央→警家 32.5 m）才扫射；否则点射，且只点头、每 42 ticks（0.7 s）一发；超过 1.5×（48.75 m）仍只点头，但降为每 60 ticks（1 s）一发。取代 [11-13-nevaio-r9-fire-discipline.md](11-13-nevaio-r9-fire-discipline.md) 中“远距离扫射”的验收；本地 82/82 测试通过。
 - **v0.10 提交**：[`1113-v0.10`](../submissions/1113-v0.10/README.md) — 开火距离分层随包提交；同时把 main 从 v5 更新到含 v0.09 Mirage 轨迹的版本。`main` version `6`、`account2` version `9` admission 均 `passed` 并激活，entry code hash `09a4bfac4aaa`；待新对局验证。
-- **战斗稳定性**：[11-13-combat-stability.md](11-13-combat-stability.md) — `5466919c` R19（`round_index 18`）击杀第一人后可见性闪烁导致目标/蹲起/移动抽搐；R18（`round_index 17`）录制路线被卡住的队友堵在 T 出生点 114 s。新增 18-tick 战斗记忆、目标锁、移除战斗蹲起、录制轨迹无进度侧移与放弃回退；本地 86/86 测试通过。
+- **战斗稳定性**：[11-13-combat-stability.md](11-13-combat-stability.md) — `5466919c` R19（`round_index 18`）击杀第一人后可见性闪烁导致目标/蹲起/移动抽搐；R18（`round_index 17`）录制路线被卡住的队友堵在 T 出生点 114 s。新增 18-tick 战斗记忆、目标锁、移除战斗蹲起、录制轨迹无进度侧移与暂时放弃；A* 脱离卡点且仍靠近路线时自动接回录制帧。本地 88/88 测试通过。
 - **v0.11 提交**：[`1113-v0.11`](../submissions/1113-v0.11/README.md) — 战斗稳定性修复随包提交；`main` version `7`、`account2` version `10` admission 均 `passed` 并激活，entry code hash `a77f1c7e5b22`；待新对局验证。
+- **v0.12 提交**：[`1113-v0.12`](../submissions/1113-v0.12/README.md) — A* 脱离卡点且距剩余录制路线 ≤8 m 时自动接回前向录制帧；`main` version `8`、`account2` version `11` admission 均 `passed` 并激活，entry code hash `d0bfe8b88034`；本地 88/88 测试通过，待新对局验证。
 
 ## 实测状态（2026-11-12）
 
@@ -115,6 +116,7 @@ badcase 采用 `MM-DD-<theme>.md` 命名；新 badcase 按日期追加，不改�
 | `1113-v0.09` | [1113-v0.09/README.md](../submissions/1113-v0.09/README.md) | [11-12-pathing-routes.md](11-12-pathing-routes.md) |
 | `1113-v0.10` | [1113-v0.10/README.md](../submissions/1113-v0.10/README.md) | [11-13-fire-range-bands.md](11-13-fire-range-bands.md) |
 | `1113-v0.11` | [1113-v0.11/README.md](../submissions/1113-v0.11/README.md) | [11-13-combat-stability.md](11-13-combat-stability.md), [11-13-fire-range-bands.md](11-13-fire-range-bands.md) |
+| `1113-v0.12` | [1113-v0.12/README.md](../submissions/1113-v0.12/README.md) | [11-13-combat-stability.md](11-13-combat-stability.md) |
 
 ## 待补 / 待核实
 

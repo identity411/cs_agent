@@ -89,7 +89,9 @@ COMBAT_MEMORY_TICKS = 18       # ~0.3 s
 # so the only signal is "moving input but no displacement".
 REPLAY_BLOCK_TICKS = 20        # ~0.33 s without progress counts as blocked
 REPLAY_AVOID_TICKS = 24        # ~0.4 s lateral sidestep
-REPLAY_AVOID_ATTEMPTS = 4      # then abandon the recorded route this round
+REPLAY_AVOID_ATTEMPTS = 4      # then temporarily abandon the route
+REPLAY_RECOVER_DISTANCE = 3.0  # A* must clear this far from the block point
+REPLAY_REJOIN_DISTANCE = 8.0   # rejoin only when this close to the lane
 HOLD_LOOK_DWELL = 3.0          # seconds per plant-hold look direction
 POST_PLANT_RADIUS = 2.0        # 3D arrival radius for a plant-hold spot
 POST_PLANT_TIMEOUT_TICKS = 640  # ~10 s; fall back to guarding the bomb
@@ -340,6 +342,8 @@ class Player:
         self.replay_avoid_until = 0
         self.replay_avoid_dir = 1
         self.replay_avoid_attempts = 0
+        self.replay_abandon_pos = None
+        self.replay_rejoin_count = 0
 
     def _reset_post_plant_state(self):
         self.post_plant_key = None
@@ -1121,6 +1125,7 @@ class Player:
                 # crutch once it applies).
                 self.replay_done = True
                 self.replay_abandoned = True
+                self.replay_abandon_pos = list(pos)
                 return replay_action
             self.replay_avoid_dir = -self.replay_avoid_dir
             self.replay_avoid_until = tick + REPLAY_AVOID_TICKS
@@ -1130,6 +1135,39 @@ class Player:
                                  move_right=0.9 * self.replay_avoid_dir,
                                  sprint=False, walk=False)
         return replay_action
+
+    def maybe_rejoin_replay(self, o, pos, route):
+        """Return to the recorded route once A* has proven us unstuck.
+
+        Abandoning the route is only a fallback: after A* clears the block
+        point (>= REPLAY_RECOVER_DISTANCE) and we are near the remaining
+        lane, resume following at the nearest forward frame.  If A* ran
+        away from the lane, keep using A* for this round.
+        """
+        if not self.replay_abandoned or route is None:
+            return
+        if self.replay_abandon_pos is None:
+            self.replay_abandon_pos = list(pos)
+            return
+        if distance(pos, self.replay_abandon_pos) < REPLAY_RECOVER_DISTANCE:
+            return
+        start = max(0, min(self.replay_cursor, len(route) - 1))
+        index = min(range(start, len(route)),
+                    key=lambda i: (route[i][0] - pos[0]) ** 2
+                    + (route[i][1] - pos[1]) ** 2)
+        gap = math.hypot(route[index][0] - pos[0],
+                         route[index][1] - pos[1])
+        if gap > REPLAY_REJOIN_DISTANCE:
+            return
+        self.replay_done = False
+        self.replay_abandoned = False
+        self.replay_cursor = index
+        # More than a small hop: let the existing A* rejoin path reach the
+        # exact recorded frame before position feedback takes over.
+        self.replay_rejoin_index = index if gap > 3.0 else None
+        self.replay_avoid_attempts = 0
+        self.replay_anchor_pos = None
+        self.replay_rejoin_count += 1
 
     def combat_move(self, o, action, gun, goal):
         """Keep aiming while advancing after a stalled fight.
@@ -1558,6 +1596,9 @@ class Player:
                 and distance(pos, anchor.stop) <= STOP_RADIUS):
             return self.hold_aim(
                 o, action, (anchor.aim[0], anchor.aim[1], anchor.aim_z))
+
+        if replay_active and self.replay_abandoned and not visible_enemy:
+            self.maybe_rejoin_replay(o, pos, replay_route)
 
         if replay_active and not self.replay_done:
             if self.replay_rejoin_index is not None:

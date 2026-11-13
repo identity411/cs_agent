@@ -1089,6 +1089,36 @@ class NavigationRegression(unittest.TestCase):
         self.assertTrue(player.replay_done)
         self.assertTrue(player.replay_abandoned)
 
+    def test_replay_rejoins_after_astar_recovers(self):
+        import dust2_replay
+        obs = observation(78.2, 92.6, -math.pi / 2, round_index=0, tick=0,
+                          match_map=OPEN_MAP, seat=0)
+        player = agent._player
+        player.replay_abandoned = True
+        player.replay_done = True
+        player.replay_cursor = 19
+        player.replay_abandon_pos = [76.8, 81.3]
+        player.maybe_rejoin_replay(obs, [78.2, 92.6], dust2_replay.ROUTE)
+        self.assertFalse(player.replay_abandoned)
+        self.assertFalse(player.replay_done)
+        self.assertGreater(player.replay_cursor, 19)
+        self.assertEqual(player.replay_rejoin_count, 1)
+
+    def test_replay_stays_on_astar_until_clear_of_the_block(self):
+        import dust2_replay
+        obs = observation(77.0, 81.5, -math.pi / 2, round_index=0, tick=0,
+                          match_map=OPEN_MAP, seat=0)
+        player = agent._player
+        player.replay_abandoned = True
+        player.replay_done = True
+        player.replay_cursor = 19
+        player.replay_abandon_pos = [76.8, 81.3]
+        player.maybe_rejoin_replay(obs, [77.0, 81.5], dust2_replay.ROUTE)
+        self.assertTrue(player.replay_abandoned)
+        # Far from the lane: keep using A* instead of backtracking.
+        player.maybe_rejoin_replay(obs, [120.0, 50.0], dust2_replay.ROUTE)
+        self.assertTrue(player.replay_abandoned)
+
     def test_combat_does_not_fire_while_airborne_or_moving(self):
         for grounded, speed in ((False, 0.0), (True, 5.0)):
             agent.init({})

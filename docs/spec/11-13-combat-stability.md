@@ -1,8 +1,8 @@
 # Badcase：R19 第二目标抽搐 + R18 出生点被队友卡死
 
-Status: **公开帧已确认；已随 `1113-v0.11` 提交，`main` v7 / `account2` v10 admission `passed` 并激活；本地 86/86 unittest 通过；待新对局验证**
+Status: **公开帧已确认；已随 `1113-v0.11` / `1113-v0.12` 提交，`main` v8 / `account2` v11 admission `passed` 并激活；本地 88/88 unittest 通过；待新对局验证**
 Date: 2026-11-13
-Submission: [1113-v0.11](../submissions/1113-v0.11/README.md)
+Submission: [1113-v0.12](../submissions/1113-v0.12/README.md)
 Match: `5466919c-22aa-45f5-8b0c-fee9143708b0`（main，dust2-cs2-v54，2026-11-13 04:00 UTC，version 5 / v0.08）
 Seat: **seat 4（0-based）= team 0 = 第 5 个玩家**
 Related specs: [11-13-fire-range-bands.md](./11-13-fire-range-bands.md)（点射频率）· [11-12-pathing-routes.md](./11-12-pathing-routes.md)（录制轨迹）· [11-13-nevaio-r9-fire-discipline.md](./11-13-nevaio-r9-fire-discipline.md)（刹停）
@@ -59,14 +59,17 @@ Related specs: [11-13-fire-range-bands.md](./11-13-fire-range-bands.md)（点射
 
 - `REPLAY_BLOCK_TICKS = 20`（0.33 s）：录制轨迹动作 `move_forward > 0.2` 但 20 ticks 内位移 <0.3 m → 判定被堵。
 - `avoid_replay_block()`：向侧面 `move_right = ±0.9` 保持 24 ticks（0.4 s），每次触发换方向；随后重新跟随轨迹。
-- `REPLAY_AVOID_ATTEMPTS = 4`：连续 4 次仍无法脱离时 `replay_done = True`、`replay_abandoned = True`，改用 A* 移动；`ct_fallback` 条件改为 `(not replay_active or replay_abandoned)`，40 s 未下包时仍可走 CT 出生点兜底。
+- `REPLAY_AVOID_ATTEMPTS = 4`：连续 4 次仍无法脱离时**暂时**放弃录制路线（`replay_done = True`、`replay_abandoned = True`），改用 A* 移动；`ct_fallback` 条件改为 `(not replay_active or replay_abandoned)`，40 s 未下包时仍可走 CT 出生点兜底。
+- `maybe_rejoin_replay()`：A* 从卡住点移动 ≥ `REPLAY_RECOVER_DISTANCE (3 m)` 后，若距剩余路线 ≤ `REPLAY_REJOIN_DISTANCE (8 m)`，重新接回最近的前向录制帧（>3 m 时先用现有 A* rejoin 走到该帧）；如果 A* 已远离录制路线，保持 A* 到回合结束，避免为回到旧路线而大幅倒退。
 
 ## 3. 测试
 
 - `test_combat_bridges_visibility_flicker_and_keeps_target`：可见性空档 2 次决策内保持不动、不开火、目标不变；
 - `test_locked_target_does_not_flap_to_a_far_enemy`：近目标短暂不可见时不切换到 50 m 目标、不开火；
 - `test_replay_sidesteps_when_blocked_by_a_teammate`：20 ticks 无进度后输出侧移，进度恢复后重置计时；
-- `test_replay_abandons_route_after_repeated_blocks`：4 次失败后放弃录制轨迹；
+- `test_replay_abandons_route_after_repeated_blocks`：4 次失败后暂时放弃录制轨迹；
+- `test_replay_rejoins_after_astar_recovers`：A* 离开卡住点 3 m 且距路线 ≤8 m 时接回前向帧；
+- `test_replay_stays_on_astar_until_clear_of_the_block`：未脱离或远离路线时不接回；
 - `test_dust2_replay_stops_for_enemy_then_resumes_from_same_cursor` 更新为等待战斗记忆过期后恢复轨迹。
 
 ## 4. 待回填
