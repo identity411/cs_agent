@@ -47,6 +47,7 @@
 - **v0.20 提交**：[`1114-v0.20`](../submissions/1114-v0.20/README.md) — T 进攻录制路线入口/跟随卡死修复（P0–P4）；`main` version `16`、`account2` version `19` admission 均 `passed` 并激活，entry code hash `741a35ac2c2d`；本地 187/187 测试通过（6 skipped），待新对局验证。
 - **Dust2 CT 车位路线**：[11-14-dust2-ct-car-routes.md](11-14-dust2-ct-car-routes.md) — 四段用户 Walklab 录制按「走位 opening + 守位 hold」配成 A_1/B_1 两组；opening 从 CT 出生点出发、终点与 hold 首帧 0.0 m 对齐，hold 循环守 A/B 车位；`user_ct_routes()` 按地图 ID/哈希分发，Mirage 候选不变；本批无 Dust2 回防，下包后回落 A*。
 - **v0.21 提交**：[`1114-v0.21`](../submissions/1114-v0.21/README.md) — Dust2 CT A/B 车位录制路线接入；`main` version `17`、`account2` version `20` admission 均 `passed` 并激活，entry code hash `86b46df3e37a`；本地 195/195 测试通过（6 skipped），待新对局验证。
+- **轨迹现状清单**：[11-14-active-recorded-routes.md](11-14-active-recorded-routes.md) — 盘点 `agent.act()` 当前可达的全部录制轨迹：五图 T 进攻、Mirage T 守包、Dust2/Mirage CT opening+hold、Mirage B→A 回防；标注 `pro_retakes.py` 未接入、Mirage B_3 禁用。
 
 ## 实测状态（2026-11-12）
 
@@ -102,6 +103,8 @@
 - [11-14-pro-demo-walklab-pipeline.md](11-14-pro-demo-walklab-pipeline.md) — 规范：职业 demo 的 Walklab review 数据如何编译为位置/视角跟随路线，以及 16/20 Hz、移动提示和实战验证边界。
 - [11-14-route-linker.md](11-14-route-linker.md) — 规范：轨迹段与通用 A* 链接器；允许中途进入，CT 守点 → 回防已接入（P1）。
 - [11-14-replay-follow-wedge.md](11-14-replay-follow-wedge.md) — badcase + 规范：T 进攻录制路线在出生点切角、倒退帧卡死 112 s、轮换复读；动作层接入 `link_to_route(first)`、偏离重接、cursor 看门狗与无进展降权。
+- [11-14-dust2-ct-car-routes.md](11-14-dust2-ct-car-routes.md) — 规范：Dust2 CT A/B 车位用户录制路线（opening + hold 配对、编译校验、运行时选择）。
+- [11-14-active-recorded-routes.md](11-14-active-recorded-routes.md) — 规范：当前启用的录制轨迹清单（五图 T 进攻、Dust2/Mirage CT 守点、Mirage B→A 回防；职业 demo 回防未启用）。
 - [11-13-t-route-rotation.md](11-13-t-route-rotation.md) — 规范：T 方多路线 replay 与失败权重轮换（路线上死亡 + 回合输降权，成功恢复并保持）；当前 Dust2 两条路线，其他地图单路线。
 - [11-13-ct-defensive-peeks.md](11-13-ct-defensive-peeks.md) — 规范：Mirage/Dust2 A/B CT 防守固定站位与入口轮看（v0.15）。
 
