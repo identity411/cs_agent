@@ -1,4 +1,5 @@
 """Rule-based player: public map, combat and bomb objectives."""
+import gc
 import heapq
 import math
 import sys
@@ -6,11 +7,27 @@ import sys
 import advance_holds
 import map_patches
 import pro_retakes
+import mirage_user_ct_routes
+import mirage_user_t_routes
 
 
 def pro_retake_routes(map_id, geometry_hash):
     item = pro_retakes.MAPS.get(map_id)
     return item["routes"] if item and item["hash"] == geometry_hash else None
+
+
+def user_ct_routes(map_id, geometry_hash):
+    if (map_id == mirage_user_ct_routes.MAP_ID
+            and geometry_hash == mirage_user_ct_routes.MAP_HASH):
+        return mirage_user_ct_routes.PAIRS, mirage_user_ct_routes.RETAKES
+    return (), {}
+
+
+def user_t_routes(map_id, geometry_hash):
+    if (map_id == mirage_user_t_routes.MAP_ID
+            and geometry_hash == mirage_user_t_routes.MAP_HASH):
+        return mirage_user_t_routes.ATTACKS, mirage_user_t_routes.POSTPLANT
+    return (), {}
 
 
 def recorded_route_info(map_id, geometry_hash):
@@ -56,6 +73,13 @@ def recorded_route_options(map_id, geometry_hash):
         if geometry_hash == MAP_HASH:
             options.append({"name": "B_site_20261113", "frames": ROUTE,
                             "site": SITE, "carrier_cutoff": CARRIER_CUTOFF})
+    elif map_id == "mirage-cs2-v54":
+        attacks, _ = user_t_routes(map_id, geometry_hash)
+        options.extend({"name": route["name"], "frames": route["frames"],
+                        "site": route["site"],
+                        "carrier_cutoff": route["carrier_cutoff"],
+                        "terminal_hold": route["terminal_hold"]}
+                       for route in attacks)
     return tuple(options)
 
 
@@ -77,6 +101,10 @@ ROUTE_LOG_ENABLED = True
 WAYPOINT_RADIUS = 2.0
 BEHIND_RADIUS = 4.0
 TURN_IN_PLACE = 1.2
+# Build the nav graph in bounded slices after the opening observation.  The
+# first callback already carries the large public map; Mirage's 2544 nodes +
+# 6381 edges take about 18 decision ticks at 512 items, well inside buy.
+MAP_BUILD_CHUNK = 512
 STUCK_AFTER = 20
 STUCK_SKIP = 80
 NO_PROGRESS_AFTER = 60
@@ -118,6 +146,13 @@ SPRINT_DISTANCE = 20.0
 STAMINA_MIN = 0.2
 REPLAY_SEARCH_FRAMES = 80
 REPLAY_LOOKAHEAD_METERS = 2.5
+RECORDED_UPHILL_MIN_RISE = 0.1
+RECORDED_UPHILL_GRADE = 0.08
+MIRAGE_ROUTE_CLIMBS = (
+    ("attack", "A_main_R6_Flierax", (60.7, 111.5), 2.5, 15.4),
+    ("defend", "A_", (39.8, 64.6), 2.5, 14.5),
+)
+MIRAGE_DISABLED_CT_PAIRS = frozenset({"B_3"})  # Market-side B two-box climb is blocked.
 PATROL_NEAR_SITE_PAD = 12.0
 COMBAT_TIMEOUT_TICKS = 90      # match ticks (~1.5 s) without fire
 COMBAT_COOLDOWN_TICKS = 60     # move-only window after a stalled combat
@@ -145,13 +180,37 @@ COMBAT_MEMORY_TICKS = 18       # ~0.3 s
 REPLAY_BLOCK_TICKS = 20        # ~0.33 s without progress counts as blocked
 REPLAY_AVOID_TICKS = 24        # ~0.4 s lateral sidestep
 REPLAY_AVOID_ATTEMPTS = 4      # then temporarily abandon the route
+CT_RECORDED_DETOUR_ATTEMPTS = 2
 REPLAY_RECOVER_DISTANCE = 3.0  # A* must clear this far from the block point
 REPLAY_REJOIN_DISTANCE = 8.0   # rejoin only when this close to the lane
+# Attack-route entry.  The recorded start (spawn pre-aim) is tactical, so
+# `first` is the only entry policy: A* all the way onto frames[0] instead of
+# joining the lane from a nearby but off-lane spawn point.
+ATTACK_ENTRY_RADIUS = 0.6
+ATTACK_ENTRY_POLICY = "first"
+# Following a lane from >0.8 m off it means the 2.5 m lookahead chord can cut
+# through a concave corner (2026-11-14 Mirage T-spawn wedge).  Re-link with
+# A* to the current frame and resume following within 0.4 m of it.
+REPLAY_REJOIN_RADIUS = 0.8
+REPLAY_JOIN_RADIUS = 0.4
+# A backpedal/strafe segment still has movement intent; only a recorded aim
+# pause (all components near zero) must not age the anti-block watchdog.
+REPLAY_PROGRESS_MIN_INTENT = 0.2
+REPLAY_CURSOR_TIMEOUT_TICKS = 150  # ~2.5 s of intent without cursor progress
+REPLAY_CURSOR_MIN_FRAMES = 4       # cursor frames required per window
 HOLD_LOOK_DWELL = 3.0          # seconds per plant-hold look direction
 POST_PLANT_RADIUS = 2.0        # 3D arrival radius for a plant-hold spot
 POST_PLANT_TIMEOUT_TICKS = 640  # ~10 s; fall back to guarding the bomb
 RETAKE_ORIGIN_PAD = 18.0        # CT must still be defending the other site
-RETAKE_JOIN_DISTANCE = 6.0     # steer directly to a distant demo lane
+RETAKE_JOIN_DISTANCE = 6.0     # switch from A* link to recorded following
+RETAKE_ENTRY_JOIN_RADIUS = 20.0  # join an entry even after leaving origin site
+RETAKE_DECISION_TICKS = 180    # ~3 s after plant to keep re-evaluating
+RETAKE_LINK_TIMEOUT_TICKS = 480  # ~8 s to reach the route entry
+RETAKE_SAME_SITE_PAD = 2.0     # already at the planted site: no cross-site run
+RETAKE_ENTRY_STRIDE = 24       # frame spacing between mid-route candidates
+RETAKE_ENTRY_CANDIDATES = 4    # A* entry checks per link selection
+LINK_LOG_ENABLED = True
+REPLAY_LOG_ENABLED = True
 
 
 def clip(value):
@@ -243,16 +302,47 @@ def follow_trajectory(frames, cursor, pos, yaw, pitch):
     yaw_error = angle(target[3] - yaw)
     pitch_error = target[4] - pitch
     sprint = bool(mask & 16)
+    rise = target[2] - pos[2]
+    uphill_jump = (target_length > 0.4
+                   and rise >= RECORDED_UPHILL_MIN_RISE
+                   and rise / target_length >= RECORDED_UPHILL_GRADE)
     return cursor, {
         "move_forward": clip(move_forward),
         "move_right": clip(move_right),
         "yaw_rate": clip(yaw_error / 0.15),
         "pitch_rate": clip(pitch_error / 0.1),
         "sprint": sprint,
-        "jump": bool(mask & 32),
+        "jump": bool(mask & 32) or uphill_jump,
         "walk": False,
         "crouch": False,
     }
+
+
+class LinkState:
+    """A* link-to-entry state shared by every recorded segment.
+
+    ``retake_*`` names on :class:`Player` stay as property aliases so older
+    tests and logs keep working; the underlying state is segment-agnostic.
+    """
+
+    __slots__ = ("segment", "route_name", "frames", "entry_frame",
+                 "candidates", "choice", "started_tick", "entered",
+                 "fail_logged", "policy")
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.segment = None
+        self.route_name = None
+        self.frames = None
+        self.entry_frame = None
+        self.candidates = []
+        self.choice = 0
+        self.started_tick = None
+        self.entered = False
+        self.fail_logged = False
+        self.policy = "earliest"
 
 
 class Player:
@@ -267,6 +357,7 @@ class Player:
         self.wp_point, self.wp_ticks = None, 0
         self.wp_last_d, self.wp_progress = None, 0.0
         self.jump_attempts, self.jump_last_tick = 0, -1000000
+        self.replay_jump_last_tick = -1000000
         self.waypoints = {}
         self.plant_zones = {}
         self.plant_points = {}
@@ -284,6 +375,7 @@ class Player:
         self.attack_route_points = []
         self.carrier_site = None
         self.carrier_site_round = None
+        self.bomb_recovery_started = False
         self._reset_combat_state()
         self._reset_post_plant_state()
         self._reset_defend_hold_state()
@@ -296,14 +388,26 @@ class Player:
         self.gate_ticks = 0
         self.gate_disabled_round = None
         self.map_id = None
+        self.map_geometry_hash = None
+        self.map_received = False
+        self._map_row = None
+        self.map_ready = False
+        self._map_nodes = ()
+        self._map_edges = ()
+        self._map_node_index = 0
+        self._map_edge_index = 0
+        self._map_original = None
+        self._map_build_skipped = False
         self.replay_round = None
         self.selected_replay = None
         self.replay_cursor = 0
         self.replay_rejoin_index = None
         self.replay_done = False
         self.replay_abandoned = False
+        self.link = LinkState()
         self._reset_replay_avoid()
         self._reset_retake()
+        self._reset_ct_recorded()
         self._reset_route_memory()
 
     @staticmethod
@@ -321,8 +425,12 @@ class Player:
         return [float(point[0]), float(point[1]),
                 float(point[2]) if len(point) > 2 else 0.0]
 
-    def load_map(self, row):
+    def begin_map_load(self, row):
+        """Apply cheap map metadata; leave the nav graph for chunked build."""
+        self.map_received = True
+        self._map_row = row
         self.map_id = row.get("id")
+        self.map_geometry_hash = row.get("geometry_hash")
         self.sites = row["sites"]
         self.map_patch = map_patches.for_map(row.get("id"))
         self.advance = advance_holds.for_map(row.get("id"))
@@ -334,42 +442,28 @@ class Player:
         self.gate_ticks = 0
         self.gate_disabled_round = None
         self.ct_spawn = self._first_spawn(row, "CT", "defend")
-        self.nodes = {n["id"]: n["position"]
-                      for n in row["nav"]["nodes"]}
-        self.edges = {key: [] for key in self.nodes}
-        self.reverse_edges.clear()
-        original = {
-            (edge["from"], edge["to"])
-            for edge in row["nav"]["edges"]
-            if edge["kind"] != "ladder"
-        }
-        for edge in row["nav"]["edges"]:
-            kind = edge["kind"]
-            if kind == "ladder":
-                continue
-            here, there = edge["from"], edge["to"]
-            self.edges[here].append(there)
-            if kind == "walk":
-                self.edges[there].append(here)
-            elif (USE_REVERSE_SOURCE_EDGES
-                  and kind == "source-adjacency"
-                  and (there, here) not in original):
-                # Opt-in only: a reverse edge can encode a climb that the
-                # collision world does not support.
-                self.edges[there].append(here)
-                self.reverse_edges.add((there, here))
         self.waypoints = row.get("bot_waypoints") or {}
         self.plant_zones = row.get("plant_zones") or {}
         self.plant_points = {}
         self.attack_routes = (
             self.waypoints.get("attackRoutes") or {})
+        nav = row.get("nav") or {}
+        self._map_nodes = nav.get("nodes") or ()
+        self._map_edges = nav.get("edges") or ()
+        self._map_node_index = 0
+        self._map_edge_index = 0
+        self._map_original = None
+        self._map_build_skipped = False
+        self.map_ready = False
+        self.nodes = {}
+        self.edges = {}
+        self.reverse_edges.clear()
         # A new map payload invalidates every route from the previous map.
         self.path, self.path_ids, self.goal = [], [], None
         self.via_key = None
         self.wp_from_id = None
         self.blocked.clear()
         self.edge_penalty.clear()
-        self._apply_map_hazards()
         self.patrol_site, self.patrol_index = None, 0
         self.patrol_last_pos, self.patrol_still = None, 0
         self.attack_route_round = None
@@ -383,6 +477,80 @@ class Player:
         self._reset_defend_hold_state()
         self._reset_waypoint_progress()
         self._reset_retake()
+        self._reset_ct_recorded()
+        if not self._map_nodes and not self._map_edges:
+            self._finish_map_load()
+
+    def _advance_map_load(self, limit=MAP_BUILD_CHUNK, force=False):
+        """Build a bounded slice of the nav graph; return True when ready."""
+        if self.map_ready:
+            return True
+        if not self._map_build_skipped and not force:
+            # The callback that receives the public map is already large;
+            # start graph work on the next callback.
+            self._map_build_skipped = True
+            return False
+        built = 0
+        while (built < limit
+               and self._map_node_index < len(self._map_nodes)):
+            node = self._map_nodes[self._map_node_index]
+            node_id = node["id"]
+            self.nodes[node_id] = node["position"]
+            self.edges[node_id] = []
+            self._map_node_index += 1
+            built += 1
+        while (built < limit
+               and self._map_edge_index < len(self._map_edges)):
+            edge = self._map_edges[self._map_edge_index]
+            self._map_edge_index += 1
+            built += 1
+            kind = edge["kind"]
+            if kind == "ladder":
+                continue
+            if self._map_original is None:
+                # Only the opt-in reverse-adjacency branch needs this set;
+                # avoid a full extra pass over every edge by default.
+                if USE_REVERSE_SOURCE_EDGES:
+                    self._map_original = {
+                        (item["from"], item["to"])
+                        for item in self._map_edges
+                        if item["kind"] != "ladder"
+                    }
+                else:
+                    self._map_original = ()
+            here, there = edge["from"], edge["to"]
+            self.edges[here].append(there)
+            if kind == "walk":
+                self.edges[there].append(here)
+            elif (USE_REVERSE_SOURCE_EDGES
+                  and kind == "source-adjacency"
+                  and (there, here) not in self._map_original):
+                # Opt-in only: a reverse edge can encode a climb that the
+                # collision world does not support.
+                self.edges[there].append(here)
+                self.reverse_edges.add((there, here))
+        if (self._map_node_index >= len(self._map_nodes)
+                and self._map_edge_index >= len(self._map_edges)):
+            self._finish_map_load()
+        return self.map_ready
+
+    def _finish_map_load(self):
+        if self.map_ready:
+            return
+        self._apply_map_hazards()
+        self.map_ready = True
+        self._map_nodes = ()
+        self._map_edges = ()
+        self._map_original = None
+        self._map_node_index = 0
+        self._map_edge_index = 0
+
+    def load_map(self, row):
+        """Immediate full load; retained for offline probes and tests."""
+        self.begin_map_load(row)
+        self._map_build_skipped = True
+        while not self.map_ready:
+            self._advance_map_load(1 << 30, force=True)
 
     def _reset_waypoint_progress(self):
         self.wp_point, self.wp_ticks = None, 0
@@ -408,14 +576,195 @@ class Player:
         self.replay_avoid_attempts = 0
         self.replay_abandon_pos = None
         self.replay_rejoin_count = 0
+        self.replay_progress_best = 0
+        self.replay_progress_tick = None
+
+    def _reset_replay_progress(self, cursor=0):
+        self.replay_progress_best = cursor
+        self.replay_progress_tick = None
 
     def _reset_retake(self):
         self.retake_checked = False
         self.retake_route = None
+        self.retake_route_name = None
+        self.retake_pair_name = None
         self.retake_cursor = 0
         self.retake_done = False
         self.retake_anchor_pos = None
         self.retake_anchor_tick = 0
+        self.retake_decision_start = None
+        self.retake_logged = False
+        self.link.reset()
+
+    # Link-state compatibility aliases.  The linker itself is now shared by
+    # attack and retake segments; these names stay for existing tests/logs.
+    @property
+    def retake_entry_logged(self):
+        return self.link.entered
+
+    @retake_entry_logged.setter
+    def retake_entry_logged(self, value):
+        self.link.entered = bool(value)
+
+    @property
+    def retake_fail_logged(self):
+        return self.link.fail_logged
+
+    @retake_fail_logged.setter
+    def retake_fail_logged(self, value):
+        self.link.fail_logged = bool(value)
+
+    @property
+    def retake_link_started(self):
+        return self.link.started_tick
+
+    @retake_link_started.setter
+    def retake_link_started(self, value):
+        self.link.started_tick = value
+
+    @property
+    def retake_entry_frame(self):
+        return self.link.entry_frame
+
+    @retake_entry_frame.setter
+    def retake_entry_frame(self, value):
+        self.link.entry_frame = value
+
+    @property
+    def retake_entry_candidates(self):
+        return self.link.candidates
+
+    @retake_entry_candidates.setter
+    def retake_entry_candidates(self, value):
+        self.link.candidates = value
+
+    @property
+    def retake_entry_choice(self):
+        return self.link.choice
+
+    @retake_entry_choice.setter
+    def retake_entry_choice(self, value):
+        self.link.choice = value
+
+    def _reset_ct_recorded(self):
+        self.ct_recorded_pair = None
+        self.ct_recorded_abandoned = False
+        self.ct_recorded_phase = "opening"
+        self.ct_recorded_cursor = 0
+        self.ct_recorded_anchor = None
+        self.ct_recorded_anchor_tick = 0
+        self.ct_recorded_anchor_cursor = 0
+        self.ct_recorded_detour_until = 0
+        self.ct_recorded_detour_side = 0
+        self.ct_recorded_detour_attempts = 0
+
+    def choose_ct_recorded(self, o, site):
+        pairs, _ = user_ct_routes(self.map_id, o.get("static_schema_hash"))
+        if not pairs or o["side"] != "defend" or self.ct_recorded_abandoned:
+            return
+        if self.ct_recorded_pair is None:
+            options = [pair for pair in pairs
+                       if pair["site"] == site["id"]
+                       and pair["name"] not in MIRAGE_DISABLED_CT_PAIRS]
+            if options:
+                self.ct_recorded_pair = options[o.get("seat", 0) % len(options)]
+
+    def recorded_climb_hotspot(self, o, pos, route_name):
+        if (self.map_id != mirage_user_t_routes.MAP_ID
+                or o.get("static_schema_hash") != mirage_user_t_routes.MAP_HASH):
+            return False
+        return any(o["side"] == side and route_name.startswith(name)
+                   and distance(pos[:2], center) <= radius
+                   and pos[2] < crest_z - 0.15
+                   for side, name, center, radius, crest_z
+                   in MIRAGE_ROUTE_CLIMBS)
+
+    def pulse_recorded_jump(self, o, pos, action, route_name):
+        """Pulse recorded-route jumps, including the two observed Mirage climbs."""
+        if self.recorded_climb_hotspot(o, pos, route_name):
+            action["jump"] = True
+        tick = o["match_tick"]
+        moving = math.hypot(action.get("move_forward", 0.0),
+                            action.get("move_right", 0.0)) > 0.4
+        issue = (bool(action.get("jump")) and moving
+                 and o["me"].get("grounded", False)
+                 and tick - self.replay_jump_last_tick >= JUMP_COOLDOWN_TICKS)
+        action["jump"] = issue
+        if issue:
+            self.replay_jump_last_tick = tick
+            action["walk"] = False
+            action["sprint"] = False
+        return action
+
+    def follow_ct_recorded(self, o, pos, action):
+        pair = self.ct_recorded_pair
+        if pair is None:
+            return None
+        frames = pair[self.ct_recorded_phase]
+        tick = o["match_tick"]
+        if (self.ct_recorded_cursor == 0
+                and distance(pos[:2], frames[0][:2]) > RETAKE_JOIN_DISTANCE):
+            return self.move(o, list(frames[0][:3]), action, sprint=True)
+        cursor, steering = follow_trajectory(
+            frames, self.ct_recorded_cursor, pos,
+            o["me"]["yaw"], o["me"]["pitch"])
+        self.ct_recorded_cursor = cursor
+        here = frames[cursor]
+        ahead = frames[min(cursor + 8, len(frames) - 1)]
+        dx, dy = ahead[0] - here[0], ahead[1] - here[1]
+        if (self.ct_recorded_anchor is None
+                or cursor >= self.ct_recorded_anchor_cursor + 2):
+            self.ct_recorded_anchor = list(pos[:2])
+            self.ct_recorded_anchor_tick = tick
+            self.ct_recorded_anchor_cursor = cursor
+            self.ct_recorded_detour_until = 0
+            self.ct_recorded_detour_attempts = 0
+        elif (self.ct_recorded_phase == "opening"
+              and tick - self.ct_recorded_anchor_tick >= REPLAY_BLOCK_TICKS):
+            climb = self.recorded_climb_hotspot(o, pos, pair["name"])
+            if climb and tick - self.ct_recorded_anchor_tick < (
+                    REPLAY_BLOCK_TICKS + 3 * JUMP_COOLDOWN_TICKS):
+                pass
+            elif climb or (self.ct_recorded_detour_attempts
+                           >= CT_RECORDED_DETOUR_ATTEMPTS
+                           and tick >= self.ct_recorded_detour_until):
+                self.ct_recorded_pair = None
+                self.ct_recorded_abandoned = True
+                return None
+            elif tick >= self.ct_recorded_detour_until:
+                offset_x, offset_y = here[0] - pos[0], here[1] - pos[1]
+                cross = dx * offset_y - dy * offset_x
+                if self.ct_recorded_detour_attempts == 0:
+                    self.ct_recorded_detour_side = 1 if cross >= 0 else -1
+                else:
+                    self.ct_recorded_detour_side *= -1
+                self.ct_recorded_detour_attempts += 1
+                self.ct_recorded_detour_until = tick + REPLAY_AVOID_TICKS
+        if (cursor >= len(frames) - 1
+                or (cursor >= len(frames) - 8
+                    and distance(pos[:2], frames[-1][:2]) < 1.5)):
+            self.ct_recorded_cursor = 0
+            if self.ct_recorded_phase == "opening":
+                self.ct_recorded_phase = "hold"
+        if distance(pos[:2], frames[cursor][:2]) > RETAKE_JOIN_DISTANCE:
+            return self.move(o, list(frames[cursor][:3]), action, sprint=True)
+        steering = self.pulse_recorded_jump(
+            o, pos, steering, pair["name"])
+        if (self.ct_recorded_phase == "opening"
+                and tick < self.ct_recorded_detour_until):
+            length = math.hypot(dx, dy)
+            if length > 0.01:
+                dx, dy = dx / length, dy / length
+                side = self.ct_recorded_detour_side
+                move_x, move_y = dx + 0.6 * side * dy, dy - 0.6 * side * dx
+                move_length = math.hypot(move_x, move_y)
+                move_x, move_y = move_x / move_length, move_y / move_length
+                yaw = o["me"]["yaw"]
+                steering.update(
+                    move_forward=clip(move_x * math.cos(yaw) - move_y * math.sin(yaw)),
+                    move_right=clip(move_x * math.sin(yaw) + move_y * math.cos(yaw)),
+                    sprint=False, walk=False)
+        return dict(action, **steering)
 
     def _reset_route_memory(self):
         self.route_memory_key = None
@@ -430,6 +779,7 @@ class Player:
         self.route_site = None
         self.route_started = False
         self.route_reached = False
+        self.route_stalled = False
         self.route_death_pending = False
         self.route_start_wins = None
         self.route_start_team = None
@@ -559,6 +909,18 @@ class Player:
         if self.route_reached:
             result = "success"
             self.route_last_failed = False
+        elif self.route_stalled:
+            # Surviving a whole round without completing the lane is a
+            # failure too: the observed wedge retried A_palace for R1/R2/R4
+            # because "neutral" kept route_last sticky at weight 1.0.
+            result = "stalled"
+            self.route_scores[name] = max(
+                ROUTE_WEIGHT_MIN,
+                self._route_score(name) * ROUTE_WEIGHT_FAILURE)
+            if self.route_success == name:
+                self.route_success = None
+            self.route_last = name
+            self.route_last_failed = True
         elif self.route_death_pending:
             before = self._team_score(
                 self.route_start_wins, self.route_start_team)
@@ -594,52 +956,366 @@ class Player:
         except Exception:
             pass
 
-    def choose_retake(self, o, pos, target_site):
-        if self.retake_checked:
+    def _link_log(self, o, result, pos=None, entry=None, mode="astar",
+                  entry_index=None, entry_count=None):
+        if not LINK_LOG_ENABLED:
             return
-        self.retake_checked = True
+        try:
+            join = ("" if pos is None or entry is None else
+                    f" join_dist={distance(pos[:2], entry[:2]):.2f}")
+            at = ("" if entry_index is None else
+                  f" entry={entry_index}/{entry_count}")
+            print(f"link map={self.map_id} seat={o.get('seat')} "
+                  f"round={o.get('round_index')} "
+                  f"segment={self.link.segment or '-'} "
+                  f"route={self.link.route_name or '-'} "
+                  f"pair={self.retake_pair_name or '-'} "
+                  f"retake={self.retake_route_name or '-'} "
+                  f"mode={mode} result={result}{at}{join}",
+                  file=sys.stderr)
+        except Exception:
+            pass
+
+    def choose_retake(self, o, pos, target_site):
+        if (self.retake_checked or self.retake_route is not None
+                or self.retake_done):
+            return
         if o["side"] != "defend" or target_site["id"] not in ("A", "B"):
+            return
+        tick = o.get("match_tick") or 0
+        if self.retake_decision_start is None:
+            self.retake_decision_start = tick
+        self.retake_pair_name = (self.ct_recorded_pair["name"]
+                                 if self.ct_recorded_pair else None)
+        _, user_retakes = user_ct_routes(
+            self.map_id, o.get("static_schema_hash"))
+        has_user_retakes = any(user_retakes.values())
+        if (distance(pos[:2], target_site["center"][:2])
+                <= target_site["radius"] + RETAKE_SAME_SITE_PAD):
+            if has_user_retakes and not self.retake_logged:
+                self._link_log(o, "same_site", pos=pos,
+                               entry=target_site["center"])
+                self.retake_logged = True
+            self.retake_checked = True
             return
         origin_id = "B" if target_site["id"] == "A" else "A"
         origin = next((s for s in self.sites if s["id"] == origin_id), None)
-        if (origin is None or distance(pos[:2], origin["center"][:2])
-                > origin["radius"] + RETAKE_ORIGIN_PAD):
+        direction = f"{origin_id}_to_{target_site['id']}"
+        user_options = user_retakes.get(direction)
+        if not user_options:
+            # Only report a missing direction when the map actually has a
+            # user-recorded retake library; maps that rely entirely on A*
+            # should not spam one line per planted round.
+            if has_user_retakes and not self.retake_logged:
+                self._link_log(o, "missing")
+                self.retake_logged = True
+            self.retake_checked = True
             return
-        routes = pro_retake_routes(self.map_id, o.get("static_schema_hash"))
-        if not routes:
+        def nearest_frame(route):
+            return min(route["frames"],
+                       key=lambda frame: distance(pos[:2], frame[:2]))
+
+        best = min(user_options, key=lambda r: distance(
+            pos[:2], nearest_frame(r)[:2]))
+
+        entry = nearest_frame(best)
+        origin_ok = (origin is not None and distance(
+            pos[:2], origin["center"][:2])
+            <= origin["radius"] + RETAKE_ORIGIN_PAD)
+        entry_ok = (distance(pos[:2], entry[:2])
+                    <= RETAKE_ENTRY_JOIN_RADIUS)
+        if not (origin_ok or entry_ok):
+            if tick - self.retake_decision_start >= RETAKE_DECISION_TICKS:
+                if not self.retake_logged:
+                    self._link_log(o, "out_of_range", pos=pos, entry=entry)
+                    self.retake_logged = True
+                self.retake_checked = True
             return
-        options = routes[f"{origin_id}_to_{target_site['id']}"]
-        best = min(options, key=lambda r: (
-            distance(pos[:2], r["frames"][0][:2])
-            - 2.0 * r["aim_forward_fraction"]))
-        self.retake_route = tuple(frame + (16,) for frame in best["frames"])
+        self.retake_route = best["frames"]
+        self.retake_route_name = best["name"]
+        self.link.segment = "retake"
+        self.link.route_name = best["name"]
+        self.retake_checked = True
+        self._link_log(o, "selected", pos=pos, entry=entry)
 
     @staticmethod
-    def retake_direct(o, pos, action, target):
-        dx, dy = target[0] - pos[0], target[1] - pos[1]
-        error = angle(math.atan2(-dy, dx) - o["me"]["yaw"])
-        action.update(move_forward=math.cos(error),
-                      move_right=-math.sin(error),
-                      yaw_rate=clip(error / 0.15),
-                      pitch_rate=clip(-o["me"]["pitch"] / 0.1),
-                      sprint=True, walk=False, crouch=False)
-        return action
+    def _entry_candidates(pos, frames):
+        """Nearest frames, spread far enough apart for a useful A* compare."""
+        ranked = sorted(range(len(frames)),
+                        key=lambda index: distance(pos[:2],
+                                                   frames[index][:2]))
+        picked = []
+        for index in ranked:
+            if all(abs(index - other) >= RETAKE_ENTRY_STRIDE
+                   for other in picked):
+                picked.append(index)
+            if len(picked) >= RETAKE_ENTRY_CANDIDATES:
+                break
+        if 0 not in picked:
+            picked.append(0)
+        return picked
+
+    @staticmethod
+    def _entry_pool(pos, frames, policy):
+        """Entry frames admitted by a segment's policy."""
+        if not frames:
+            return []
+        if policy == "first":
+            return [0]
+        if policy == "window":
+            return Player._entry_candidates(pos, frames[:48])
+        return Player._entry_candidates(pos, frames)
+
+    def _rank_entries(self, pos, frames, pool):
+        ranked = []
+        for index in pool:
+            path, node_ids = self._astar(pos, list(frames[index][:3]))
+            if not path or not node_ids or node_ids[0] is None:
+                continue
+            cost = distance(pos, path[0])
+            cost += sum(distance(path[step], path[step + 1])
+                        for step in range(len(path) - 1))
+            ranked.append((cost, index))
+        ranked.sort(key=lambda item: (item[0], item[1]))
+        return ranked
+
+    def choose_route_entry(self, o, pos, frames, policy="earliest",
+                           route_name=None, segment=None):
+        """Pick an entry frame; ``first`` forces the recorded start.
+
+        ``earliest`` keeps the CT retake behavior: a closer later frame beats
+        walking back to the recorded start.  ``first`` is for T attack lanes,
+        whose start carries the spawn pre-aim / doorway entry that must not be
+        skipped by a nearest-frame join.
+        """
+        if self.link.entry_frame is not None:
+            return True
+        if not self.map_ready:
+            return False
+        self.link.frames = frames
+        self.link.policy = policy
+        if route_name is not None:
+            self.link.route_name = route_name
+        if segment is not None:
+            self.link.segment = segment
+        ranked = self._rank_entries(
+            pos, frames, self._entry_pool(pos, frames, policy))
+        if not ranked and policy != "earliest":
+            # Recorded start unreachable: take the nearest reachable frame
+            # instead of losing the route entirely.
+            self.link.policy = f"{policy}-fallback"
+            ranked = self._rank_entries(
+                pos, frames, self._entry_pool(pos, frames, "earliest"))
+        if not ranked:
+            return False
+        self.link.candidates = ranked
+        self.link.choice = 0
+        self.link.entry_frame = ranked[0][1]
+        self.link.started_tick = o.get("match_tick") or 0
+        self.link.entered = False
+        self.link.fail_logged = False
+        return True
+
+    def _retake_turning(self, o, pos):
+        """A stationary A* link may be turning in place, not blocked."""
+        goal = self.goal
+        if goal is None:
+            return False
+        error = angle(math.atan2(-(goal[1] - pos[1]),
+                                 goal[0] - pos[0]) - o["me"]["yaw"])
+        return abs(error) > TURN_IN_PLACE
+
+    def _note_link_entered(self, o, pos, frames, entry_index):
+        if self.link.entered:
+            return
+        self.link.entered = True
+        self.link.started_tick = None
+        self.path, self.path_ids = [], []
+        self.goal = None
+        self.via_key = None
+        self._link_log(o, "entered", pos=pos,
+                       entry=frames[entry_index],
+                       entry_index=entry_index,
+                       entry_count=len(frames))
+
+    def _retry_link_entry(self, o, pos, frames, tick):
+        if self.link.entered:
+            return False
+        choice = self.link.choice + 1
+        if choice >= len(self.link.candidates):
+            return False
+        self.link.choice = choice
+        self.link.entry_frame = self.link.candidates[choice][1]
+        self.link.started_tick = tick
+        if self.link.segment == "retake":
+            self.retake_cursor = 0
+            self.retake_anchor_pos = None
+            self.retake_anchor_tick = 0
+        self.path, self.path_ids = [], []
+        self.goal = None
+        self.via_key = None
+        self.stuck = 0
+        self._reset_waypoint_progress()
+        self._link_log(o, "retry", pos=pos,
+                       entry=frames[self.link.entry_frame],
+                       entry_index=self.link.entry_frame,
+                       entry_count=len(frames))
+        return True
+
+    def follow_attack_link(self, o, pos, route, replay_info, action):
+        """A* onto the recorded lane before following it.
+
+        Returns an action while linking; ``None`` means the follower owns
+        movement (entered, or no reachable entry so the legacy nearest-frame
+        follower is kept rather than freezing the seat).
+        """
+        name = replay_info.get("name")
+        # `route` may be a fresh carrier-cutoff slice each tick; identity is
+        # not stable, so only a route-name/segment change resets the link.
+        if (self.link.frames is None
+                or self.link.segment != "attack"
+                or self.link.route_name != name):
+            self.link.reset()
+            self.link.frames = route
+            self.link.segment = "attack"
+            self.link.route_name = name
+        tick = o.get("match_tick") or 0
+        if self.link.entry_frame is None:
+            if not self.choose_route_entry(
+                    o, pos, route, policy=ATTACK_ENTRY_POLICY,
+                    route_name=name, segment="attack"):
+                self.link.entered = True
+                return None
+        entry_index = self.link.entry_frame
+        entry = route[entry_index]
+        # link_to_route() compares plan distances; a ramp's z difference
+        # must not keep the 3D check from ever entering (dust2 R13 slope).
+        if distance(pos[:2], entry[:2]) <= ATTACK_ENTRY_RADIUS:
+            self._note_link_entered(o, pos, route, entry_index)
+            self.replay_cursor = entry_index
+            self._reset_replay_progress(entry_index)
+            return None
+        if (self.link.started_tick is not None
+                and tick - self.link.started_tick
+                >= RETAKE_LINK_TIMEOUT_TICKS):
+            if not self._retry_link_entry(o, pos, route, tick):
+                self._abandon_recorded_route(o, pos, "link_timeout")
+                return None
+            entry_index = self.link.entry_frame
+            entry = route[entry_index]
+        key = ("attack_entry", name, entry_index, o.get("round_index"))
+        link_action = self.link_to_route(
+            o, pos, action, route, entry_index,
+            ATTACK_ENTRY_RADIUS, via_key=key)
+        if link_action is None:
+            # Already inside the link radius: hand movement to the follower.
+            self._note_link_entered(o, pos, route, entry_index)
+            self.replay_cursor = entry_index
+            self._reset_replay_progress(entry_index)
+        return link_action
+
+    def _pause_attack_watchdogs(self, tick):
+        """Combat must not age the attack link timeout or cursor window."""
+        if (self.link.segment == "attack" and not self.link.entered
+                and self.link.entry_frame is not None):
+            self.link.started_tick = tick
+        self.replay_progress_tick = tick
+        self.replay_progress_best = self.replay_cursor
+
+    def _start_attack_rejoin(self, o, pos, route, replay_info, index):
+        """Off-lane: A* back onto the current frame before following on."""
+        self.link.reset()
+        self.link.frames = route
+        self.link.segment = "attack"
+        self.link.route_name = replay_info.get("name")
+        self.link.entry_frame = index
+        self.link.started_tick = o.get("match_tick") or 0
+        self._reset_replay_progress(index)
+
+    def link_to_route(self, o, pos, action, frames, entry_index=0,
+                      entry_radius=RETAKE_JOIN_DISTANCE, via_key=None):
+        """A* to a route entry; return None once close enough to follow it."""
+        if not frames:
+            return None
+        index = max(0, min(entry_index, len(frames) - 1))
+        entry = frames[index]
+        if distance(pos[:2], entry[:2]) <= entry_radius:
+            return None
+        key = via_key or ("link", self.map_id, index,
+                          o.get("round_index"))
+        return self.move(o, list(entry[:3]), action, sprint=True,
+                         via_key=key)
 
     def follow_retake(self, o, pos, action, bomb_position):
         frames = self.retake_route
         if self.retake_done or not frames:
             return None
-        tick = o["match_tick"]
+        tick = o.get("match_tick") or 0
         if (self.retake_anchor_pos is None
                 or distance(pos[:2], self.retake_anchor_pos) > 0.3):
-            self.retake_anchor_pos, self.retake_anchor_tick = list(pos[:2]), tick
+            self.retake_anchor_pos = list(pos[:2])
+            self.retake_anchor_tick = tick
         elif tick - self.retake_anchor_tick >= REPLAY_BLOCK_TICKS:
-            self.retake_done = True
-            return None
-        first = frames[0]
-        if (self.retake_cursor == 0
-                and distance(pos[:2], first[:2]) > RETAKE_JOIN_DISTANCE):
-            return self.retake_direct(o, pos, action, first)
+            if self._retake_turning(o, pos):
+                # Turning toward a link target changes yaw, not position.
+                self.retake_anchor_tick = tick
+            elif self._retry_link_entry(o, pos, frames, tick):
+                self.retake_anchor_pos = None
+            else:
+                self.retake_done = True
+                if not self.retake_fail_logged:
+                    self.retake_fail_logged = True
+                    self._link_log(o, "blocked", pos=pos, entry=frames[0])
+                return None
+        if self.retake_entry_frame is None:
+            if not self.choose_route_entry(
+                    o, pos, frames, policy="earliest",
+                    route_name=self.retake_route_name, segment="retake"):
+                if self.map_ready:
+                    self.retake_done = True
+                    if not self.retake_fail_logged:
+                        self.retake_fail_logged = True
+                        self._link_log(o, "unreachable", pos=pos,
+                                       entry=frames[0])
+                return None
+        entry_index = self.retake_entry_frame
+        entry = frames[entry_index]
+        if self.retake_link_started is None:
+            self.retake_link_started = tick
+        if (self.retake_link_started is not None
+                and tick - self.retake_link_started >=
+                RETAKE_LINK_TIMEOUT_TICKS):
+            if not self._retry_link_entry(o, pos, frames, tick):
+                self.retake_done = True
+                if not self.retake_fail_logged:
+                    self.retake_fail_logged = True
+                    self._link_log(o, "timeout", pos=pos, entry=entry,
+                                   entry_index=entry_index,
+                                   entry_count=len(frames))
+                return None
+            entry_index = self.retake_entry_frame
+            entry = frames[entry_index]
+        if distance(pos[:2], entry[:2]) > RETAKE_JOIN_DISTANCE:
+            return self.link_to_route(
+                o, pos, action, frames, entry_index, RETAKE_JOIN_DISTANCE,
+                via_key=("retake_entry", self.retake_route_name,
+                         entry_index, o.get("round_index")))
+        if not self.retake_entry_logged:
+            self.retake_entry_logged = True
+            self.retake_link_started = None
+            self.retake_cursor = entry_index
+            # Drop any A* state from the link; the follower owns movement now.
+            self.path, self.path_ids = [], []
+            self.goal = None
+            self.via_key = None
+            self._link_log(o, "entered", pos=pos, entry=entry,
+                           entry_index=entry_index, entry_count=len(frames))
+        if self.goal is not None:
+            # The follower does not use the link's A* goal; keeping it would
+            # also confuse the turning-vs-blocked check above.
+            self.path, self.path_ids = [], []
+            self.goal = None
+            self.via_key = None
         cursor, steering = follow_trajectory(
             frames, self.retake_cursor, pos, o["me"]["yaw"], o["me"]["pitch"])
         self.retake_cursor = cursor
@@ -647,14 +1323,22 @@ class Player:
                 or (cursor >= len(frames) - 8
                     and distance(pos[:2], frames[-1][:2]) < 2.0)):
             self.retake_cursor = len(frames) - 1
-            return self.retake_direct(o, pos, action, bomb_position)
-        elif distance(pos[:2], frames[cursor][:2]) > RETAKE_JOIN_DISTANCE:
-            return self.retake_direct(o, pos, action, frames[cursor])
+            return self.move(
+                o, list(bomb_position), action, sprint=True,
+                via_key=("retake_bomb", o.get("round_index")))
+        if distance(pos[:2], frames[cursor][:2]) > RETAKE_JOIN_DISTANCE:
+            return self.link_to_route(
+                o, pos, action, frames, cursor, RETAKE_JOIN_DISTANCE,
+                via_key=("retake_rejoin", self.retake_route_name,
+                         o.get("round_index")))
         steering["sprint"] = True
         steering["walk"] = False
         return dict(action, **steering)
 
     def _reset_post_plant_state(self):
+        self.t_postplant_route = None
+        self.t_postplant_cursor = 0
+        self.t_postplant_start_tick = None
         self.post_plant_key = None
         self.post_plant_plan = None
         self.post_plant_spot = 0
@@ -662,6 +1346,34 @@ class Player:
         self.post_plant_until = 0
         self.post_plant_spot_since = None
         self.post_plant_force_generic = False
+
+    def follow_t_postplant(self, o, site, pos, action):
+        _, holds = user_t_routes(self.map_id, o.get("static_schema_hash"))
+        options = holds.get(site["id"], ())
+        if not options:
+            return None
+        if self.t_postplant_route is None:
+            self.t_postplant_route = options[o.get("seat", 0) % len(options)]
+            self.t_postplant_cursor = 0
+            self.t_postplant_start_tick = o["match_tick"]
+        frames = self.t_postplant_route["frames"]
+        if (self.t_postplant_cursor == 0
+                and distance(pos[:2], frames[0][:2]) > RETAKE_JOIN_DISTANCE):
+            self.t_postplant_start_tick = o["match_tick"]
+            return self.move(o, list(frames[0][:3]), action, sprint=True)
+        timed_cursor = min(len(frames) - 1,
+                           max(self.t_postplant_cursor,
+                               (o["match_tick"] - self.t_postplant_start_tick) // 4))
+        cursor, steering = follow_trajectory(
+            frames, timed_cursor, pos,
+            o["me"]["yaw"], o["me"]["pitch"])
+        self.t_postplant_cursor = cursor
+        if cursor >= len(frames) - 1:
+            self.t_postplant_cursor = 0
+            self.t_postplant_start_tick = o["match_tick"]
+        if distance(pos[:2], frames[cursor][:2]) > RETAKE_JOIN_DISTANCE:
+            return self.move(o, list(frames[cursor][:3]), action, sprint=True)
+        return dict(action, **steering)
 
     def _reset_defend_hold_state(self):
         self.defend_hold_key = None
@@ -819,6 +1531,9 @@ class Player:
 
     def route(self, start, goal, via=None):
         """Plan through optional lane points, then to the exact goal."""
+        if not self.map_ready:
+            while not self.map_ready:
+                self._advance_map_load(1 << 30, force=True)
         if not self.nodes:
             return [list(goal)], [None]
         targets = list(via or []) + [goal]
@@ -1318,15 +2033,20 @@ class Player:
 
     def buy(self, o):
         m = o["me"]
-        if (o["side"] == "defend" and not m["has_kit"]
-                and m["cash"] >= 400):
-            return {"buy": "defusekit"}
+        # Buy the rifle before accessories can consume its budget.  On a
+        # pistol round, armor likewise takes precedence over a kit.
         rifle = "ak47" if o["side"] == "attack" else "m4a1"
         price = 2700 if o["side"] == "attack" else 2900
         if m["weapons"][0] is None and m["cash"] >= price:
             return {"buy": rifle}
         if m["armor"] < 50 and m["cash"] >= 650:
             return {"buy": "armor"}
+        helmet_price = 350 if m["armor"] >= 100 else 1000
+        if not m["helmet"] and m["cash"] >= helmet_price:
+            return {"buy": "helmet"}
+        if (o["side"] == "defend" and not m["has_kit"]
+                and m["cash"] >= 400):
+            return {"buy": "defusekit"}
         return {}
 
     def _pick_target(self, o, m):
@@ -1393,11 +2113,14 @@ class Player:
                   and float(speed) <= STOP_SPEED)
         eye = 0.95 if m["crouch"] else 1.62
         dz = enemy["z"] + height - m["z"] - eye
-        punch = gun.get("aim_punch", {}) if gun else {}
+        # The legal weapon observation exposes these offsets directly.
+        # Match the official baseline's 2x angular recoil compensation.
+        recoil_yaw = gun.get("recoil_yaw", 0.0) if gun else 0.0
+        recoil_pitch = gun.get("recoil_pitch", 0.0) if gun else 0.0
         yaw = angle(math.atan2(-dy, dx) - m["yaw"]
-                    - 2 * punch.get("yaw", 0.0))
+                    - 2 * recoil_yaw)
         pitch = math.atan2(dz, max(0.1, distance_xy))
-        pitch -= m["pitch"] + 2 * punch.get("pitch", 0.0)
+        pitch -= m["pitch"] + 2 * recoil_pitch
         ready = bool(gun and gun["ammo"]
                      and not gun["reload_until"])
         align = SPRAY_ALIGN if mode == "spray" else TAP_ALIGN
@@ -1473,8 +2196,13 @@ class Player:
             self.replay_anchor_pos = list(pos)
             self.replay_anchor_tick = tick
             return replay_action
-        if replay_action.get("move_forward", 0.0) <= 0.2:
-            # Recorded aim pause, not a block: do not let the timer age.
+        # Only a recorded aim pause (all components near zero) pauses the
+        # watchdog.  A backpedal or pure strafe still means movement intent:
+        # the 2026-11-14 Mirage wedge was move_forward=-0.99 against a wall
+        # and the old forward-only test reset the timer on every tick.
+        intent = math.hypot(replay_action.get("move_forward", 0.0),
+                            replay_action.get("move_right", 0.0))
+        if intent <= REPLAY_PROGRESS_MIN_INTENT:
             self.replay_anchor_pos = list(pos)
             self.replay_anchor_tick = tick
             return replay_action
@@ -1484,9 +2212,7 @@ class Player:
                 # A permanently parked teammate must not pin us for the
                 # whole round; fall back to A* (and the 40 s T spawn
                 # crutch once it applies).
-                self.replay_done = True
-                self.replay_abandoned = True
-                self.replay_abandon_pos = list(pos)
+                self._abandon_recorded_route(o, pos, "avoid")
                 return replay_action
             self.replay_avoid_dir = -self.replay_avoid_dir
             self.replay_avoid_until = tick + REPLAY_AVOID_TICKS
@@ -1496,6 +2222,56 @@ class Player:
                                  move_right=0.9 * self.replay_avoid_dir,
                                  sprint=False, walk=False)
         return replay_action
+
+    def _replay_progress_stalled(self, o, cursor, replay_action):
+        """High movement intent without cursor progress means a block.
+
+        Position can keep changing while the recorder makes no progress
+        (the A ramp ping-pong), so this watch is on the frame cursor rather
+        than on displacement.  Recorded aim pauses have zero intent and do
+        not age the window.
+        """
+        intent = math.hypot(replay_action.get("move_forward", 0.0),
+                            replay_action.get("move_right", 0.0))
+        tick = o.get("match_tick") or 0
+        if intent <= REPLAY_PROGRESS_MIN_INTENT:
+            self.replay_progress_tick = tick
+            self.replay_progress_best = cursor
+            return False
+        if self.replay_progress_tick is None:
+            self.replay_progress_tick = tick
+            self.replay_progress_best = cursor
+            return False
+        if cursor >= self.replay_progress_best + REPLAY_CURSOR_MIN_FRAMES:
+            self.replay_progress_best = cursor
+            self.replay_progress_tick = tick
+            return False
+        return (tick - self.replay_progress_tick
+                >= REPLAY_CURSOR_TIMEOUT_TICKS)
+
+    def _abandon_recorded_route(self, o, pos, reason):
+        self.replay_done = True
+        self.replay_abandoned = True
+        self.replay_abandon_pos = list(pos)
+        if (self.route_started and not self.route_reached
+                and self.selected_replay is not None):
+            self.route_stalled = True
+        self._replay_log(o, reason, pos)
+
+    def _replay_log(self, o, reason, pos=None):
+        if not REPLAY_LOG_ENABLED:
+            return
+        try:
+            where = ("" if pos is None else
+                     f" pos={pos[0]:.2f},{pos[1]:.2f}")
+            print(f"replay map={self.map_id} seat={o.get('seat')} "
+                  f"round={o.get('round_index')} "
+                  f"route={(self.selected_replay or {}).get('name') or '-'} "
+                  f"reason={reason} cursor={self.replay_cursor} "
+                  f"avoid={self.replay_avoid_attempts}{where}",
+                  file=sys.stderr)
+        except Exception:
+            pass
 
     def maybe_rejoin_replay(self, o, pos, route):
         """Return to the recorded route once A* has proven us unstuck.
@@ -1523,6 +2299,9 @@ class Player:
         self.replay_done = False
         self.replay_abandoned = False
         self.replay_cursor = index
+        self.link.entered = True
+        self.link.entry_frame = index
+        self._reset_replay_progress(index)
         # More than a small hop: let the existing A* rejoin path reach the
         # exact recorded frame before position feedback takes over.
         self.replay_rejoin_index = index if gap > 3.0 else None
@@ -1724,9 +2503,25 @@ class Player:
         return action
 
     def act(self, o):
+        # The opening observation is large.  Apply map metadata cheaply here
+        # and build the nav graph in bounded slices on later callbacks; a live
+        # first observation still completes immediately so pathing is safe.
         if "map" in o:
-            self.load_map(o["map"])
-        self._sync_route_memory(o)
+            row = o["map"]
+            same_map = self.map_received and (
+                row is self._map_row
+                or (row.get("id") is not None
+                    and row.get("id") == self.map_id
+                    and row.get("geometry_hash") == self.map_geometry_hash))
+            if not same_map:
+                self.begin_map_load(row)
+        if not self.map_ready:
+            if o.get("phase") == "live":
+                self._advance_map_load(1 << 30, force=True)
+            else:
+                self._advance_map_load()
+        if self.map_ready and self.map_id is not None:
+            self._sync_route_memory(o)
         if self.round != o["round_index"]:
             self._finalize_route_round(o)
             self.round = o["round_index"]
@@ -1754,6 +2549,7 @@ class Player:
             self.gate_ticks = 0
             self.carrier_site = None
             self.carrier_site_round = None
+            self.bomb_recovery_started = False
             self._reset_combat_state()
             self._reset_post_plant_state()
             self._reset_waypoint_progress()
@@ -1764,7 +2560,9 @@ class Player:
             self.replay_done = False
             self.replay_abandoned = False
             self._reset_replay_avoid()
+            self.replay_jump_last_tick = -1000000
             self._reset_retake()
+            self._reset_ct_recorded()
             self._reset_route_round(o)
         m = o["me"]
         bomb = o.get("bomb") or {}
@@ -1787,17 +2585,37 @@ class Player:
         pos = [m["x"], m["y"], m["z"]]
         tick = o["match_tick"]
         visible_enemy = bool(o.get("visible")) and not m.get("blind_ticks")
+        recovering_bomb = (o["side"] == "attack"
+                           and bomb.get("state") == "dropped"
+                           and bomb.get("position") is not None
+                           and not m.get("carrying_bomb"))
+        if recovering_bomb:
+            # Interrupt the lane without marking it as successfully
+            # completed.  After pickup, continue with A* to the plant
+            # zone rather than returning to the old recorded cursor.
+            self.bomb_recovery_started = True
+            self.replay_rejoin_index = None
         site = self.choose_site(o)
         site_id = site["id"]
-        if o["side"] == "attack" and not planted and self.selected_replay is None:
+        if (o["side"] == "attack" and not planted
+                and not self.bomb_recovery_started
+                and self.selected_replay is None):
             self.selected_replay = self._select_recorded_route(
                 o, pos, site_id)
             if self.selected_replay is not None:
                 self.route_site = self.selected_replay.get("site")
-        replay_info = self.selected_replay if o["side"] == "attack" and not planted else None
+        replay_info = (self.selected_replay
+                       if o["side"] == "attack" and not planted
+                       and not self.bomb_recovery_started else None)
         defend_hold_spot = defend_hold_look = None
         defend_hold_at_stop = False
         if o["side"] == "defend" and not planted:
+            self.choose_ct_recorded(o, site)
+        # Keep the pair across the plant: follow_ct_recorded() is already
+        # guarded by ``not planted``, and the handoff log/connector lookup
+        # still needs the source route name.
+        if (o["side"] == "defend" and not planted
+                and self.ct_recorded_pair is None):
             (defend_hold_spot, defend_hold_look,
              defend_hold_at_stop) = self.defend_hold_target(
                  o, site, pos, visible_enemy)
@@ -1836,6 +2654,7 @@ class Player:
         # job is to reach the site and plant, not to visit CT spawn.
         ct_fallback = (
             o["side"] == "attack" and not planted
+            and not self.bomb_recovery_started
             and (not replay_active or self.replay_abandoned)
             and not m.get("carrying_bomb")
             and (o.get("round_tick") or 0) >= TEMP_T_CT_FALLBACK_TICKS
@@ -1860,7 +2679,11 @@ class Player:
 
         post_plant_spot = post_plant_look = None
         post_plant_at_stop = False
-        if planted and o["side"] == "attack":
+        _, t_postplant_holds = user_t_routes(
+            self.map_id, o.get("static_schema_hash"))
+        use_t_recorded_hold = (planted and o["side"] == "attack"
+                               and bool(t_postplant_holds.get(site_id)))
+        if planted and o["side"] == "attack" and not use_t_recorded_hold:
             (post_plant_spot, post_plant_look,
              post_plant_at_stop) = self.post_plant_target(
                 o, site, bomb, pos, visible_enemy)
@@ -1870,6 +2693,8 @@ class Player:
         elif planted and post_plant_spot is not None:
             goal = list(post_plant_spot.stop)
         elif planted and bomb.get("position"):
+            goal = list(bomb["position"])
+        elif recovering_bomb:
             goal = list(bomb["position"])
         elif ct_fallback:
             goal = list(self.ct_spawn)
@@ -1911,6 +2736,7 @@ class Player:
                     goal = list(patrol[self.patrol_index])
             patrol_active = True
         elif (o["side"] == "attack" and not planted
+              and not self.bomb_recovery_started
               and not route_near and not ct_fallback):
             # T side: official attack route first, then advance_holds.
             via = self.route_lane_points(site_id, o)
@@ -1954,9 +2780,13 @@ class Player:
 
         if visible_enemy:
             self.combat_memory_until = tick + COMBAT_MEMORY_TICKS
+            if replay_active:
+                self._pause_attack_watchdogs(tick)
             if replay_active or retake_active:
                 if retake_active:
                     self.retake_anchor_pos = None
+                    if self.retake_link_started is not None:
+                        self.retake_link_started = tick
                 action = self.combat(o, action, gun)
                 if action.get("fire"):
                     self.combat_last_fire_tick = tick
@@ -1986,11 +2816,33 @@ class Player:
             return action
         elif (tick < self.combat_memory_until
               and self.combat_last_target is not None):
+            if replay_active:
+                self._pause_attack_watchdogs(tick)
             if retake_active:
                 self.retake_anchor_pos = None
+                if self.retake_link_started is not None:
+                    self.retake_link_started = tick
             return self.combat_wait(o, action, self.combat_last_target)
         else:
             self._reset_combat_state()
+
+        if use_t_recorded_hold:
+            hold_action = self.follow_t_postplant(o, site, pos, action)
+            if hold_action is not None:
+                return hold_action
+
+        if (replay_info and replay_info.get("terminal_hold")
+                and self.replay_done and not planted
+                and not m.get("carrying_bomb")
+                and not self.replay_abandoned):
+            end = replay_info["frames"][-1]
+            if distance(pos[:2], end[:2]) > 1.5:
+                return self.move(o, list(end[:3]), action, sprint=False)
+            action.update(move_forward=0.0, move_right=0.0,
+                          yaw_rate=clip(angle(end[3] - m["yaw"]) / 0.15),
+                          pitch_rate=clip((end[4] - m["pitch"]) / 0.1),
+                          sprint=False, walk=False)
+            return action
 
         if post_plant_at_stop and post_plant_look is not None:
             # No spinning: stand on the cover spot and watch one entry at a
@@ -1999,6 +2851,11 @@ class Player:
                 o, action,
                 (post_plant_look.aim[0], post_plant_look.aim[1],
                  post_plant_look.aim_z))
+
+        if self.ct_recorded_pair is not None and not planted:
+            ct_action = self.follow_ct_recorded(o, pos, action)
+            if ct_action is not None:
+                return ct_action
 
         if defend_hold_at_stop and defend_hold_look is not None:
             return self.hold_aim(
@@ -2034,23 +2891,48 @@ class Player:
                 if distance(pos, rejoin) > 3.0:
                     return self.move(o, rejoin, action, sprint=True)
                 self.replay_rejoin_index = None
-            cursor, replay_action = follow_trajectory(
-                replay_route, self.replay_cursor, pos, m["yaw"], m["pitch"])
-            self.replay_cursor = cursor
-            if carrier_cutoff is not None and cursor >= len(replay_route) - 2:
-                self.replay_done = True
-            if (cursor >= len(replay_route) - 80
-                    and distance(pos, replay_route[-1][:3]) < 1.5):
-                self.replay_done = True
-            if cursor < len(replay_route) - 1:
-                if not self.replay_done:
-                    rejoin = list(replay_route[cursor][:3])
-                    if distance(pos, rejoin) > 6.0:
-                        self.replay_rejoin_index = cursor
-                        return self.move(o, rejoin, action, sprint=True)
-                    replay_action = self.avoid_replay_block(
-                        o, replay_action, pos)
-                    return dict(action, **replay_action)
+            if not self.link.entered and not self.replay_done:
+                link_action = self.follow_attack_link(
+                    o, pos, replay_route, replay_info, action)
+                if link_action is not None:
+                    return link_action
+            if not self.replay_done:
+                cursor, replay_action = follow_trajectory(
+                    replay_route, self.replay_cursor, pos,
+                    m["yaw"], m["pitch"])
+                self.replay_cursor = cursor
+                if (carrier_cutoff is not None
+                        and cursor >= len(replay_route) - 2):
+                    self.replay_done = True
+                if (cursor >= len(replay_route) - 80
+                        and distance(pos, replay_route[-1][:3]) < 1.5):
+                    self.replay_done = True
+                if not self.replay_done and self._replay_progress_stalled(
+                        o, cursor, replay_action):
+                    self._abandon_recorded_route(o, pos, "cursor_stall")
+                if cursor < len(replay_route) - 1:
+                    if not self.replay_done:
+                        rejoin = list(replay_route[cursor][:3])
+                        if (distance(pos[:2], rejoin[:2])
+                                > REPLAY_REJOIN_RADIUS):
+                            self._start_attack_rejoin(
+                                o, pos, replay_route, replay_info, cursor)
+                            link_action = self.link_to_route(
+                                o, pos, action, replay_route, cursor,
+                                REPLAY_JOIN_RADIUS,
+                                via_key=("attack_rejoin",
+                                         replay_info["name"], cursor,
+                                         o.get("round_index")))
+                            if link_action is not None:
+                                return link_action
+                            self._note_link_entered(
+                                o, pos, replay_route, cursor)
+                            self.replay_cursor = cursor
+                        replay_action = self.avoid_replay_block(
+                            o, replay_action, pos)
+                        replay_action = self.pulse_recorded_jump(
+                            o, pos, replay_action, replay_info["name"])
+                        return dict(action, **replay_action)
 
         if replay_active and self.replay_done:
             via, via_key = [], None
@@ -2069,6 +2951,10 @@ _player = Player()
 
 def init(context):
     global _player
+    # The public map is a large acyclic structure.  Reference counting frees
+    # it without repeatedly scanning it in a mid-callback GC pause, matching
+    # the official template's startup profile.
+    gc.disable()
     _player = Player()
 
 

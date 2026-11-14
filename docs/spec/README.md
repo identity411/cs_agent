@@ -34,7 +34,16 @@
 - **v0.13 提交**：[`1113-v0.13`](../submissions/1113-v0.13/README.md) — Borgo、Molo、Nevaio 三条用户录制轨迹接入；带包者在目标包点前 12 m 切换 A* 下包，下包后守包。`main` version `9`、`account2` version `12` admission 均 `passed` 并激活，entry code hash `6445465bb5ae`；待新对局验证。
 - **v0.14 提交**：[`1113-v0.14`](../submissions/1113-v0.14/README.md) — Dust2/Mirage 职业 demo CT 对侧下包回防路线接入；全程冲刺跟随示范位置和视角，遇敌暂停交战后续走，路线结束直奔炸弹，实际卡住才用 A* 脱困。`main` version `10`、`account2` version `13` admission 均 `passed` 并激活，entry code hash `fcc52013a804`；待新对局验证。见 [11-13-pro-demo-routes.md](11-13-pro-demo-routes.md)。
 - **v0.15 提交**：[`1113-v0.15`](../submissions/1113-v0.15/README.md) — Mirage/Dust2 A/B CT 防守 peek loop：`advance_holds.DefendHold` + `agent.defend_hold_target()`，未下包时固定站位轮看两个入口，遇敌暂停、下包后切回回防。`main` version `11`、`account2` version `14` admission 均 `passed` 并激活，entry code hash `b6de28e989ad`；本地 105/105 测试通过，待新对局验证。见 [11-13-ct-defensive-peeks.md](11-13-ct-defensive-peeks.md)。
-- **T 方路线权重轮换**：[11-13-t-route-rotation.md](11-13-t-route-rotation.md) — T 方下包前按权重选录制路线；在路线上死亡且本队输掉回合 → 该路线权重 ×0.5（下限 0.1），下一回合优先选其他路线；成功到点/下包 → 权重恢复并保持。当前 Dust2 有两条候选（`legacy` + `B_site_20261113`），其他地图单路线行为不变；本地 123/123 测试通过，待新对局验证。
+- **T 方路线权重轮换**：[11-13-t-route-rotation.md](11-13-t-route-rotation.md) — T 方下包前按权重选录制路线；在路线上死亡且本队输掉回合 → 该路线权重 ×0.5（下限 0.1），下一回合优先选其他路线；成功到点/下包 → 权重恢复并保持。当前 Dust2 有两条候选（`legacy` + `B_site_20261113`），其他地图单路线行为不变；本地 126/126 测试通过。
+- **v0.16 提交**：[`1113-v0.16`](../submissions/1113-v0.16/README.md) — T 方多路线权重轮换 + Dust2 `B_site_20261113` 录制路线（706 帧，`CARRIER_CUTOFF=588`）；点射节奏统一为 0.6 s 一发；回放帧支持 jump 位。`main` version `12`、`account2` version `15` admission 均 `passed` 并激活，entry code hash `2d473d997b99`；本地 126/126 测试通过，待新对局验证。见 [11-13-t-route-rotation.md](11-13-t-route-rotation.md) 与 [11-13-fire-range-bands.md](11-13-fire-range-bands.md)。
+
+### 2026-11-14
+- **首拍 fault badcase**：[11-14-first-tick-fault.md](11-14-first-tick-fault.md) — `20228083`（Mirage，v0.16）中 main seat 8、account2 seat 5 均在 R0 tick 0 `fault`，整场 20 回合未购买、未移动、0 发。公开回放显示为 neutral control，不是路径卡住；最可能原因是首拍回调同时完成 `load_map`（2544 节点 / 6381 边）与新增路线初始化，超过首拍预算。方案：首拍只存地图与廉价元数据，nav 图在后续 buy 回调分块构建，路线同步推迟到 `map_ready` 之后，并按官方模板 `gc.disable()`。
+- **v0.17 提交**：[`1114-v0.17`](../submissions/1114-v0.17/README.md) — 首拍分块加载修复：`begin_map_load()` 只保存元数据；后续 buy 回调按 `MAP_BUILD_CHUNK=512` 构建 nav（Mirage 约 18 个决策拍 ready）；`_sync_route_memory()` 推迟到 `map_ready` 之后；`route()` 未 ready 时先补完；`init()` 增加 `gc.disable()`。`main` version `13`、`account2` version `16` admission 均 `passed` 并激活，entry code hash `e14f8fe8dd59`；本地 130/130 测试通过，待新对局验证。
+- **v0.18 提交**：[`1114-v0.18`](../submissions/1114-v0.18/README.md) — 后坐力补偿改读 `recoil_yaw` / `recoil_pitch`、T 方掉包恢复、逐拍购买预算；接入 Mirage CT 用户录制路线（A/B 各三组 + 两条 B→A 回防）与五条用户指定的 Mirage T demo 路线（含 A 守包片段）。路线帧改为 zlib + ascii85 内嵌，逐帧数据不变并满足打包限制。`main` version `14`、`account2` version `17` admission 均 `passed` 并激活，entry code hash `1c9eb25a7f30`；本地 160/160 测试通过，待新对局验证。
+- **轨迹链接器（P1）**：[11-14-route-linker.md](11-14-route-linker.md) — 把录制内容统一为“轨迹段”，用 `link_to_route()` 从当前/上一段终点 A* 接到下一段入口；允许中途进入，按 A* 路径代价选入口帧，不再直线转向。CT 守点→回防已接入：下包后 3 s 重选窗口、8 s 接路超时、失败重试候选帧后回退 A* 到炸弹；Mirage B_1/B_2/B_3 分别命中轨迹第 38/38/31 帧；本地 177/177 测试通过（6 skipped）。已随 `1114-v0.19` 提交：`main` version `15`、`account2` version `18` admission 均 `passed` 并激活，entry code hash `55bff79bffe0`；实战效果待回填。
+- **Mirage CT B_3 禁用**：`MIRAGE_DISABLED_CT_PAIRS = frozenset({"B_3"})`，B 点 two-box 攀爬在平台碰撞中不可通过；`choose_ct_recorded()` 不再分配 B_3，B 守点回退 B_1/B_2。随 `1114-v0.19` 提交。
+- **录制回放卡死 badcase**：[11-14-replay-follow-wedge.md](11-14-replay-follow-wedge.md) — `439a8cec`（Mirage，v0.18）seat 5 在 R1/R2/R4 同一坐标 `(89.69,133.15)` 静止约 112 s、0 发射、0 死亡；根因是 T 进攻从出生点北侧中途切入 `A_palace` 录线、倒退帧（`move_forward≈-0.99`）被 `avoid_replay_block` 误判为瞄准停顿，且“活着无进展”轮换记为 neutral。修复：动作层接入 `link_to_route(first, 1.0 m)`、偏离重接（0.8 m 触发 / 0.4 m 停止）、cursor 2.5 s 看门狗与无进展降权；`LinkState` 通用化。
 
 ## 实测状态（2026-11-12）
 
@@ -87,6 +96,9 @@
 - [11-13-combat-stability.md](11-13-combat-stability.md) — badcase：R19 可见性闪烁导致第二目标抽搐；R18 录制路线被队友堵死。战斗记忆 / 目标锁 / 不蹲起 / 路线侧移与放弃。
 - [11-13-post-plant-holds.md](11-13-post-plant-holds.md) — 规范：T 守包 hold（不转圈）+ 带包人 40 s 兜底豁免；Mirage A/B spot/look 数据。
 - [11-13-pro-demo-routes.md](11-13-pro-demo-routes.md) — 规范：Dust2/Mirage 职业 demo CT 对侧下包回防路线（v0.14）。
+- [11-14-pro-demo-walklab-pipeline.md](11-14-pro-demo-walklab-pipeline.md) — 规范：职业 demo 的 Walklab review 数据如何编译为位置/视角跟随路线，以及 16/20 Hz、移动提示和实战验证边界。
+- [11-14-route-linker.md](11-14-route-linker.md) — 规范：轨迹段与通用 A* 链接器；允许中途进入，CT 守点 → 回防已接入（P1）。
+- [11-14-replay-follow-wedge.md](11-14-replay-follow-wedge.md) — badcase + 规范：T 进攻录制路线在出生点切角、倒退帧卡死 112 s、轮换复读；动作层接入 `link_to_route(first)`、偏离重接、cursor 看门狗与无进展降权。
 - [11-13-t-route-rotation.md](11-13-t-route-rotation.md) — 规范：T 方多路线 replay 与失败权重轮换（路线上死亡 + 回合输降权，成功恢复并保持）；当前 Dust2 两条路线，其他地图单路线。
 - [11-13-ct-defensive-peeks.md](11-13-ct-defensive-peeks.md) — 规范：Mirage/Dust2 A/B CT 防守固定站位与入口轮看（v0.15）。
 
@@ -128,6 +140,10 @@ badcase 采用 `MM-DD-<theme>.md` 命名；新 badcase 按日期追加，不改�
 | `1113-v0.13` | [1113-v0.13/README.md](../submissions/1113-v0.13/README.md) | [11-12-pathing-routes.md](11-12-pathing-routes.md) |
 | `1113-v0.14` | [1113-v0.14/README.md](../submissions/1113-v0.14/README.md) | [11-13-pro-demo-routes.md](11-13-pro-demo-routes.md) |
 | `1113-v0.15` | [1113-v0.15/README.md](../submissions/1113-v0.15/README.md) | [11-13-ct-defensive-peeks.md](11-13-ct-defensive-peeks.md) |
+| `1113-v0.16` | [1113-v0.16/README.md](../submissions/1113-v0.16/README.md) | [11-13-t-route-rotation.md](11-13-t-route-rotation.md), [11-13-fire-range-bands.md](11-13-fire-range-bands.md) |
+| `1114-v0.17` | [1114-v0.17/README.md](../submissions/1114-v0.17/README.md) | [11-14-first-tick-fault.md](11-14-first-tick-fault.md), [11-12-pathing-routes.md](11-12-pathing-routes.md) |
+| `1114-v0.18` | [1114-v0.18/README.md](../submissions/1114-v0.18/README.md) | [11-14-recoil-bomb-economy.md](11-14-recoil-bomb-economy.md), [11-14-pro-demo-walklab-pipeline.md](11-14-pro-demo-walklab-pipeline.md), [11-13-t-route-rotation.md](11-13-t-route-rotation.md), [11-13-pro-demo-routes.md](11-13-pro-demo-routes.md) |
+| `1114-v0.19` | [1114-v0.19/README.md](../submissions/1114-v0.19/README.md) | [11-14-route-linker.md](11-14-route-linker.md), [11-14-pro-demo-walklab-pipeline.md](11-14-pro-demo-walklab-pipeline.md) |
 
 ## 待补 / 待核实
 
@@ -145,5 +161,7 @@ badcase 采用 `MM-DD-<theme>.md` 命名；新 badcase 按日期追加，不改�
 - [ ] CT 防守 peek loop 的新对局验证：未下包时按站位/瞄点轮看，遇敌暂停，下包后切回回防/拆包（见 [11-13-ct-defensive-peeks.md](11-13-ct-defensive-peeks.md)）
 - [ ] Borgo/Molo/Nevaio 录制路线与 Dust2/Mirage CT 回防路线的正式对局验证（见 [11-13-pro-demo-routes.md](11-13-pro-demo-routes.md)）
 - [ ] T 方路线权重轮换的新对局验证：路线上死亡 + 回合输后换路、成功后保持、Dust2 两条路线尝试/死亡统计（见 [11-13-t-route-rotation.md](11-13-t-route-rotation.md)）
+- [ ] 轨迹链接器的新对局验证：CT 守点 → 回防入口命中、链接耗时、失败回退与回防到位率（见 [11-14-route-linker.md](11-14-route-linker.md)）
+- [ ] T 进攻入口与跟随恢复验证：入口 A* 落到 `frames[0]`、偏离重接、cursor 看门狗、无进展换路（见 [11-14-replay-follow-wedge.md](11-14-replay-follow-wedge.md)）
 
 > 官方指南中的源码行号仅用于核对语义，不是运行时依赖。不要从全知录像或训练导出重建观察。
