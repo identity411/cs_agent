@@ -42,6 +42,11 @@ dl { margin: 0; display: grid; grid-template-columns: 54px minmax(0,1fr); row-ga
 dt { color: #a8b5bb; }
 dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 #timeline { width: 100%; accent-color: #e7bd68; }
+.inspector select { width: 100%; margin-bottom: 8px; }
+.route-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+.route-actions input { min-width: 0; flex: 1; height: 34px; border: 1px solid #545d64; background: #30383e; color: #f2f3f4; padding: 0 8px; }
+.route-actions button { padding: 0 8px; }
+.route-source { color: #b9c4c9; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; margin-bottom: 8px; }
 .time, .path-summary, .inspector p { color: #b9c4c9; font-size: 12px; line-height: 1.5; }
 .time { text-align: right; font-variant-numeric: tabular-nums; }
 footer { border-top: 1px solid #3a4147; padding: 8px 16px; color: #9eaaaf; font-size: 11px; }

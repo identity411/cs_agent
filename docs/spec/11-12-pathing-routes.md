@@ -2,7 +2,7 @@
 
 Status: **2026-11-13 Borgo、Molo、Nevaio 用户轨迹与带包切换随 `1113-v0.13` 提交并激活：main version 9、account2 version 12；正式对局效果待验证。**
 Date: 2026-11-12
-Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照）· [1113-v0.05](../submissions/1113-v0.05/README.md)（Dust2 用户轨迹跟随）· [1113-v0.06](../submissions/1113-v0.06/README.md)（原地准星帧修正）· [1113-v0.09](../submissions/1113-v0.09/README.md)（Mirage 录制轨迹）· [1113-v0.13](../submissions/1113-v0.13/README.md)（R3 三图轨迹与带包切换）· [11-12-advance-holds.md](./11-12-advance-holds.md)（下游：寻路之后的推进点 / 预瞄角 / 刹停）· [11-12-mirage-spawn-jump.md](./11-12-mirage-spawn-jump.md)（Mirage R6/R10 与 CT A 卡台阶）· [11-12-match-observability.md](./11-12-match-observability.md)（卡死/到点/回防指标）· [11-12-stuck-at-spawn.md](./11-12-stuck-at-spawn.md)（出生点卡住）· [11-12-site-center-hold.md](./11-12-site-center-hold.md)（包点中心 hold）· [maps.md](./maps.md)（nav / bot_waypoints 边界）· [agent-interface.md](./agent-interface.md)（动作字段）
+Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照）· [1113-v0.05](../submissions/1113-v0.05/README.md)（Dust2 用户轨迹跟随）· [1113-v0.06](../submissions/1113-v0.06/README.md)（原地准星帧修正）· [1113-v0.09](../submissions/1113-v0.09/README.md)（Mirage 录制轨迹）· [1113-v0.13](../submissions/1113-v0.13/README.md)（R3 三图轨迹与带包切换）· [1113-v0.16](../submissions/1113-v0.16/README.md)（多路线权重轮换 / jump 位）· [11-14-first-tick-fault.md](./11-14-first-tick-fault.md)（首拍分块加载 nav）· [11-12-advance-holds.md](./11-12-advance-holds.md)（下游：寻路之后的推进点 / 预瞄角 / 刹停）· [11-12-mirage-spawn-jump.md](./11-12-mirage-spawn-jump.md)（Mirage R6/R10 与 CT A 卡台阶）· [11-12-match-observability.md](./11-12-match-observability.md)（卡死/到点/回防指标）· [11-12-stuck-at-spawn.md](./11-12-stuck-at-spawn.md)（出生点卡住）· [11-12-site-center-hold.md](./11-12-site-center-hold.md)（包点中心 hold）· [maps.md](./maps.md)（nav / bot_waypoints 边界）· [agent-interface.md](./agent-interface.md)（动作字段）
 
 ## 0. 目标
 
@@ -83,7 +83,7 @@ Related specs: [1112-v0.03](../submissions/1112-v0.03/README.md)（提交快照�
 
 ### 2.5 R3 三图录制轨迹与带包切换
 
-`borgo-r3-v54`、`molo-r3-v54`、`nevaio-r3-v54` 分别使用用户录制的 A、B、A 进攻轨迹；仅地图 ID 与几何哈希均匹配时启用。轨迹按实时位置和视角反馈跟随，遇敌暂停并射击，脱离卡点后可经 A* 接回。
+`borgo-r3-v54`、`molo-r3-v54` 使用单条用户录制的 A、B 进攻轨迹；`nevaio-r3-v54` 保留旧 A 路线 `legacy`，并新增 A/B × mid/long 四条用户录制候选，按目标包点过滤并参与失败轮换（见 [11-14-nevaio-user-routes.md](./11-14-nevaio-user-routes.md)）。仅地图 ID 与几何哈希均匹配时启用。轨迹按实时位置和视角反馈跟随，遇敌暂停并射击，脱离卡点后可经 A* 接回。
 
 带包者使用录制轨迹直到距目标包点 12 m，或到达编译时确定的截止帧；之后不再接回轨迹，改用 A* 前往 `plant_point(site)`。进入合法 `plant_zones` 后使用 `plant`，炸弹状态变为 `planted` 后使用既有 post-plant watch 逻辑。未带包者仍可走完整录制轨迹。
 

@@ -47,8 +47,10 @@
 - **v0.20 提交**：[`1114-v0.20`](../submissions/1114-v0.20/README.md) — T 进攻录制路线入口/跟随卡死修复（P0–P4）；`main` version `16`、`account2` version `19` admission 均 `passed` 并激活，entry code hash `741a35ac2c2d`；本地 187/187 测试通过（6 skipped），待新对局验证。
 - **Dust2 CT 车位路线**：[11-14-dust2-ct-car-routes.md](11-14-dust2-ct-car-routes.md) — 四段用户 Walklab 录制按「走位 opening + 守位 hold」配成 A_1/B_1 两组；opening 从 CT 出生点出发、终点与 hold 首帧 0.0 m 对齐，hold 循环守 A/B 车位；`user_ct_routes()` 按地图 ID/哈希分发，Mirage 候选不变；本批无 Dust2 回防，下包后回落 A*。
 - **v0.21 提交**：[`1114-v0.21`](../submissions/1114-v0.21/README.md) — Dust2 CT A/B 车位录制路线接入；`main` version `17`、`account2` version `20` admission 均 `passed` 并激活，entry code hash `86b46df3e37a`；本地 195/195 测试通过（6 skipped），待新对局验证。
-- **轨迹现状清单**：[11-14-active-recorded-routes.md](11-14-active-recorded-routes.md) — 盘点 `agent.act()` 当前可达的全部录制轨迹：五图 T 进攻、Mirage T 守包、Dust2/Mirage CT opening+hold、Mirage B→A 回防；标注 `pro_retakes.py` 未接入、Mirage B_3 禁用。
-- **Dust2 中门夹 B**：新增 T 录制路线 `B_mid_doors_20261114`（720 帧，路线终点 15.84 m 外于 B 包点中心，cutoff 取末帧后由 A* 下包），并把它加入 Dust2 B 点权重轮换；下包后 T 守包复用 CT `B_1` 守车位的 hold 帧（`B_car_hold`，230 帧）。本地 202/202 测试通过（6 skipped），待提交。
+- **轨迹现状清单**：[11-14-active-recorded-routes.md](11-14-active-recorded-routes.md) — 盘点 `agent.act()` 当前可达的全部录制轨迹：五图 T 进攻、Mirage T 守包、Dust2/Mirage/Nevaio CT opening+hold、Mirage/Nevaio 回防；标注 `pro_retakes.py` 未接入、Mirage B_3 禁用。
+- **Dust2 中门夹 B**：新增 T 录制路线 `B_mid_doors_20261114`（720 帧，路线终点 15.84 m 外于 B 包点中心，cutoff 取末帧后由 A* 下包），并把它加入 Dust2 B 点权重轮换；下包后 T 守包复用 CT `B_1` 守车位的 hold 帧（`B_car_hold`，230 帧）。随 `1114-v0.22` 首次进入提交快照。
+- **Nevaio 用户路线**：[11-14-nevaio-user-routes.md](11-14-nevaio-user-routes.md) — 12 条用户 Walklab 录制编译为 T A/B × mid/long 四条进攻、CT A/B × mid/long 四条开局与 A↔B 双向各两条回防；CT 开局没有独立守点录制，按用户选择使用末帧静止守点（`holdMode = "final_pose"`）；Nevaio 的 `recorded_site()` 因用户候选跨 A/B 而不再固定为 A。随 `1114-v0.22` 提交并激活。
+- **v0.22 提交**：[`1114-v0.22`](../submissions/1114-v0.22/README.md) — Nevaio 用户 T/CT 路线、Dust2 中门夹 B 首次进入快照，以及静止尾段、掉包 `world`、恢复接路超时三项本地修复；`main` version `18`、`account2` version `21` admission 均 `passed` 并激活，entry code hash `b2f874a6d0df`；本地 219/219 测试通过（6 skipped），待新对局验证。
 
 ## 实测状态（2026-11-12）
 
@@ -105,8 +107,9 @@
 - [11-14-route-linker.md](11-14-route-linker.md) — 规范：轨迹段与通用 A* 链接器；允许中途进入，CT 守点 → 回防已接入（P1）。
 - [11-14-replay-follow-wedge.md](11-14-replay-follow-wedge.md) — badcase + 规范：T 进攻录制路线在出生点切角、倒退帧卡死 112 s、轮换复读；动作层接入 `link_to_route(first)`、偏离重接、cursor 看门狗与无进展降权。
 - [11-14-dust2-ct-car-routes.md](11-14-dust2-ct-car-routes.md) — 规范：Dust2 CT A/B 车位用户录制路线（opening + hold 配对、编译校验、运行时选择）。
-- [11-14-active-recorded-routes.md](11-14-active-recorded-routes.md) — 规范：当前启用的录制轨迹清单（五图 T 进攻、Dust2/Mirage CT 守点、Mirage B→A 回防；职业 demo 回防未启用）。
-- [11-13-t-route-rotation.md](11-13-t-route-rotation.md) — 规范：T 方多路线 replay 与失败权重轮换（路线上死亡 + 回合输降权，成功恢复并保持）；当前 Dust2 三条路线，其他地图单路线。
+- [11-14-nevaio-user-routes.md](11-14-nevaio-user-routes.md) — 规范：Nevaio 用户录制 T A/B × mid/long、CT opening（末帧静止守点）与 A↔B 双向回防；manifest + 编译器接入。
+- [11-14-active-recorded-routes.md](11-14-active-recorded-routes.md) — 规范：当前启用的录制轨迹清单（五图 T 进攻、Dust2/Mirage/Nevaio CT 守点、Mirage/Nevaio 回防；职业 demo 回防未启用）。
+- [11-13-t-route-rotation.md](11-13-t-route-rotation.md) — 规范：T 方多路线 replay 与失败权重轮换（路线上死亡 + 回合输降权，成功恢复并保持）；当前 Dust2 三条、Mirage 六条、Nevaio 五条候选，其余地图单路线。
 - [11-13-ct-defensive-peeks.md](11-13-ct-defensive-peeks.md) — 规范：Mirage/Dust2 A/B CT 防守固定站位与入口轮看（v0.15）。
 
 > 完整武器 / 装备 / 投掷物数值不落盘,以官方冻结目录为准。

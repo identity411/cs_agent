@@ -1,0 +1,15 @@
+{
+  "catalog": "../../walklab/public/routes/mirage-pro.json",
+  "mapId": "mirage-cs2-v54",
+  "mapHash": "ef9384945046620f3f61ac579ae91f0beac8d5541c871e1996faf7a36f2e39db",
+  "attacks": [
+    {"name": "A_palace_R4_ay0k", "id": "mirage-attack-a-r4-835598", "site": "A", "startFrame": 0},
+    {"name": "A_connector_R8_opdust", "id": "mirage-attack-a-r8-739416", "site": "A", "startFrame": 0},
+    {"name": "A_main_R6_Flierax", "id": "mirage-attack-a 大-r6-656353", "site": "A", "startFrame": 0},
+    {"name": "B_short_R14_karnez", "id": "mirage-attack-b 小-r14-946848", "site": "B", "startFrame": 640},
+    {"name": "B_apps_R13_Salazar", "id": "mirage-attack-b 二楼-r13-829570", "site": "B", "startFrame": 0, "handoff": "b_apps_drop_handoff.json", "terminalHold": true}
+  ],
+  "postplant": [
+    {"name": "A_hold_R4_Flierax", "id": "mirage-postplant_hold-a-r4-656353", "site": "A"}
+  ]
+}

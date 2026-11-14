@@ -1,0 +1,16 @@
+{
+  "mapId": "mirage-cs2-v54",
+  "mapHash": "ef9384945046620f3f61ac579ae91f0beac8d5541c871e1996faf7a36f2e39db",
+  "pairs": [
+    {"name": "A_1", "site": "A", "opening": "mirage ct 走a路线1.json", "hold": "mirage ct 守a路线1.json"},
+    {"name": "A_2", "site": "A", "opening": "mirage ct 走a路线2.json", "hold": "mirage ct 守a路线2.json"},
+    {"name": "A_3", "site": "A", "opening": "mirage ct 走a路线3.json", "hold": "mirage ct 守a路线3.json"},
+    {"name": "B_1", "site": "B", "opening": "mirage ct走b路线1.json", "hold": "mirage ct守b路线1.json"},
+    {"name": "B_2", "site": "B", "opening": "mirage ct走b 路线2.json", "hold": "mirage ct守b路线2 .json"},
+    {"name": "B_3", "site": "B", "opening": "mirage ct走b路线3.json", "hold": "mirage ct 守b路线3.json"}
+  ],
+  "retakes": [
+    {"name": "B_to_A_1", "origin": "B", "target": "A", "source": "mirage ct b 回防路线1.json"},
+    {"name": "B_to_A_2", "origin": "B", "target": "A", "source": "mirage ct b回防路线2.json"}
+  ]
+}

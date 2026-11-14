@@ -12,6 +12,9 @@ from test_movement import observation
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = {"borgo": "A", "molo": "B", "nevaio": "A"}
+# Nevaio also registers user-recorded A and B attacks, so the legacy lane no
+# longer pins the T site plan for the whole map.
+SITE_PLANS = {"borgo": "A", "molo": "B", "nevaio": None}
 
 
 class R3ReplayTests(unittest.TestCase):
@@ -51,7 +54,8 @@ class R3ReplayTests(unittest.TestCase):
                 map_id = fixture["map"]["id"]
                 map_hash = fixture["map"]["geometry_hash"]
                 self.assertGreater(len(agent.recorded_route(map_id, map_hash)), 100)
-                self.assertEqual(agent.recorded_site(map_id, map_hash), site)
+                self.assertEqual(agent.recorded_site(map_id, map_hash),
+                                 SITE_PLANS[name])
                 self.assertIsNone(agent.recorded_route(map_id, "wrong"))
 
     def test_carrier_hands_off_to_astar_near_recorded_site(self):

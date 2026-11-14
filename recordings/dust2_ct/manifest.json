@@ -1,0 +1,9 @@
+{
+  "mapId": "dust2-cs2-v54",
+  "mapHash": "b0c308526d55e56e3a50a5ecf9bdd1b70a02daf560a9a8157931f3b340fb8d66",
+  "pairs": [
+    {"name": "A_1", "site": "A", "opening": "dust2 ct 走a 车位.json", "hold": "dust2 ct 守a车位.json"},
+    {"name": "B_1", "site": "B", "opening": "dust2 ct 走b车位.json", "hold": "dust2 ct 守b车位.json"}
+  ],
+  "retakes": []
+}

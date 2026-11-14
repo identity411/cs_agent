@@ -1,0 +1,116 @@
+{
+  "version": "1114-v0.19",
+  "date": "2026-11-14",
+  "competition_id": "2a97f94f-816a-52b7-b4b8-5925db160245",
+  "contract": "rsi-fps-5.5",
+  "status": "main submitted; admission passed; version 15 activated · account2 submitted; admission passed; version 18 activated",
+  "files": {
+    "advance_holds.py": "9bc7fdcf5ea964a4d9e3d5ec872d6e7883ae66c21bc1c8c23a74f41eca2e69c7",
+    "agent.py": "229ecee6f4aa9115f0167560557ba1a2035816de8668325eec873129193d4a0f",
+    "borgo_replay.py": "ca267ccbd5f92af60780856727b8b8f6180fb84cea7b5fedca3912a47ec083ed",
+    "dust2_b_replay.py": "4076ff6b737f552e72e35e5f222350e008512f22f1a68709b3f4449b76d9a476",
+    "dust2_replay.py": "76c53c1578c1b583e7fab424290b4d23a3f2e304b2fd4f8f9b1bfb945cd6ba77",
+    "map_patches.py": "ecf5540c904f2cb1c71406038486e83fb071c0085fb4262ccbac07f5eb0b21d1",
+    "mirage_replay.py": "23819c85051e80d1396b9583d7819eb00540a4f103e64fce03ad79bb4e958e3f",
+    "mirage_user_ct_routes.py": "048ffc21e604652b5818222458ebe87917c39f3575aa89235198c1cbc5cbf0c1",
+    "mirage_user_t_routes.py": "5ea3039debb9a80aea534bf7a03b62151b62afce01f316f851979625a4df3939",
+    "molo_replay.py": "b6e02ed98d9eb373dcdad9605fa62c4fde968f4dcd8ec20a4ee3ebf3e0310a94",
+    "nevaio_replay.py": "55d21420855f1b100c0364e7456c9c68f056a536b8a052c8305d6f2cf63881a2",
+    "pro_retakes.py": "d95cd78bca43678880be22ef6fc0c9f814187687eca87ae192b52cb122ec5b8e"
+  },
+  "change_note": "README.md",
+  "related_specs": [],
+  "api_result": {
+    "schema_version": 1,
+    "command": "submit",
+    "zip": "/private/tmp/agx-agent.zip",
+    "zip_sha256": "55bff79bffe00a5cdfbfc9715d5d3983c4860bf91ee98f07858f4577bf657c60",
+    "started_at": "2026-11-14T01:17:19.851747+00:00",
+    "accounts": [
+      {
+        "account": "main",
+        "key_fingerprint": "sha256:e6aafdb7610e",
+        "base_url": "https://agx.cool",
+        "competition_id": "2a97f94f-816a-52b7-b4b8-5925db160245",
+        "game_id": "fps",
+        "agent_id": "11a0f0db-afda-4a57-a2f4-36ed0462085e",
+        "agent_created": false,
+        "registered": true,
+        "bundle_id": "f446206c-42e7-47b7-b71d-9e1bc588d6f8",
+        "admission": "passed",
+        "activated": true,
+        "version_id": "1878e21e-e8b1-42a6-97d7-cee81c1fd030",
+        "version_number": 15,
+        "zip_sha256": "55bff79bffe00a5cdfbfc9715d5d3983c4860bf91ee98f07858f4577bf657c60",
+        "idempotency_key": "82c927b2-1efd-55b9-b14b-0b929570c109",
+        "activation": {
+          "agent_id": "11a0f0db-afda-4a57-a2f4-36ed0462085e",
+          "version_id": "1878e21e-e8b1-42a6-97d7-cee81c1fd030",
+          "submission_id": "f446206c-42e7-47b7-b71d-9e1bc588d6f8",
+          "runtime_id": "python-agent-v1"
+        },
+        "entry": {
+          "id": "f81706cb-1aa5-54e6-9e4b-e1199ca25820",
+          "agent_id": null,
+          "version_id": null,
+          "version_number": 15,
+          "code_hash_short": "55bff79bffe0"
+        },
+        "verification": [
+          {
+            "path": "/api/v1/python-submissions/agents/11a0f0db-afda-4a57-a2f4-36ed0462085e/bundles",
+            "status": 200
+          },
+          {
+            "path": "/api/v1/me/competitions/2a97f94f-816a-52b7-b4b8-5925db160245/versions",
+            "status": 200
+          }
+        ],
+        "status": "activated"
+      },
+      {
+        "account": "account2",
+        "key_fingerprint": "sha256:7e2fa55a6034",
+        "base_url": "https://agx.cool",
+        "competition_id": "2a97f94f-816a-52b7-b4b8-5925db160245",
+        "game_id": "fps",
+        "agent_id": "291c135e-e580-4762-b007-906a0fb742df",
+        "agent_created": false,
+        "registered": true,
+        "bundle_id": "115575a5-7eb1-4f88-ac02-8e71faf8316f",
+        "admission": "passed",
+        "activated": true,
+        "version_id": "b99e6512-4148-4472-80aa-57f047227445",
+        "version_number": 18,
+        "zip_sha256": "55bff79bffe00a5cdfbfc9715d5d3983c4860bf91ee98f07858f4577bf657c60",
+        "idempotency_key": "4440bdef-fa10-531f-b001-7afc4d58fb0e",
+        "activation": {
+          "agent_id": "291c135e-e580-4762-b007-906a0fb742df",
+          "version_id": "b99e6512-4148-4472-80aa-57f047227445",
+          "submission_id": "115575a5-7eb1-4f88-ac02-8e71faf8316f",
+          "runtime_id": "python-agent-v1"
+        },
+        "entry": {
+          "id": "a23486ad-a765-51b7-b2a9-b090b2d2e48f",
+          "agent_id": null,
+          "version_id": null,
+          "version_number": 18,
+          "code_hash_short": "55bff79bffe0"
+        },
+        "verification": [
+          {
+            "path": "/api/v1/python-submissions/agents/291c135e-e580-4762-b007-906a0fb742df/bundles",
+            "status": 200
+          },
+          {
+            "path": "/api/v1/me/competitions/2a97f94f-816a-52b7-b4b8-5925db160245/versions",
+            "status": 200
+          }
+        ],
+        "status": "activated"
+      }
+    ],
+    "ok": true,
+    "finished_at": "2026-11-14T01:17:44.681606+00:00"
+  }
+}

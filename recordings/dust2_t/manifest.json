@@ -1,0 +1,10 @@
+{
+  "mapId": "dust2-cs2-v54",
+  "mapHash": "b0c308526d55e56e3a50a5ecf9bdd1b70a02daf560a9a8157931f3b340fb8d66",
+  "attacks": [
+    {"name": "B_mid_doors_20261114", "site": "B", "source": "dust2 t 中门夹b.json"}
+  ],
+  "postplant": [
+    {"name": "B_car_hold", "site": "B", "source": "../dust2_ct/dust2 ct 守b车位.json"}
+  ]
+}

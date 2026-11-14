@@ -756,6 +756,72 @@ class NavigationRegression(unittest.TestCase):
         self.assertTrue(jump_actions)
         self.assertGreater(jump_actions[0]["move_forward"], 0.0)
 
+    def test_recorded_trajectory_jumps_for_uphill_position_target(self):
+        frames = ((0.0, 0.0, 0.0, 0.0, 0.0, 0),
+                  (0.6, 0.0, 0.0, 0.0, 0.0, 0),
+                  (1.2, 0.0, 0.8, 0.0, 0.0, 0))
+        _cursor, action = agent.follow_trajectory(
+            frames, 0, [0.0, 0.0, 0.0], 0.0, 0.0)
+        self.assertTrue(action["jump"])
+
+    def test_recorded_trajectory_jumps_on_sustained_grade(self):
+        frames = ((0.0, 0.0, 0.0, 0.0, 0.0, 0),
+                  (1.0, 0.0, 0.0, 0.0, 0.0, 0),
+                  (2.0, 0.0, 0.22, 0.0, 0.0, 0),
+                  (3.0, 0.0, 0.33, 0.0, 0.0, 0))
+        _cursor, action = agent.follow_trajectory(
+            frames, 0, [0.0, 0.0, 0.0], 0.0, 0.0)
+        self.assertTrue(action["jump"])
+
+    def test_recorded_trajectory_does_not_jump_on_flat_or_downhill(self):
+        for z in (0.0, -0.8):
+            frames = ((0.0, 0.0, 0.0, 0.0, 0.0, 0),
+                      (0.6, 0.0, z, 0.0, 0.0, 0))
+            _cursor, action = agent.follow_trajectory(
+                frames, 0, [0.0, 0.0, 0.0], 0.0, 0.0)
+            self.assertFalse(action["jump"])
+
+    def test_mirage_match_slope_positions_get_pulsed_route_jumps(self):
+        player = agent.Player()
+        player.map_id = agent.mirage_user_t_routes.MAP_ID
+        samples = (("attack", "A_main_R6_Flierax",
+                    [60.6856, 110.3077, 14.3105]),
+                   ("defend", "A_1", [38.747, 65.007, 14.3105]),
+                   ("defend", "A_3", [39.1249, 64.4176, 14.3105]))
+        for side, name, pos in samples:
+            player.replay_jump_last_tick = -1000000
+            obs = {"side": side, "match_tick": 16000,
+                   "static_schema_hash": agent.mirage_user_t_routes.MAP_HASH,
+                   "me": {"grounded": True}}
+            moving = {"move_forward": 0.8, "move_right": 0.2,
+                      "jump": False, "sprint": True}
+            first = player.pulse_recorded_jump(obs, pos, dict(moving), name)
+            self.assertTrue(first["jump"])
+            self.assertFalse(first["sprint"])
+            obs["match_tick"] += 3
+            self.assertFalse(player.pulse_recorded_jump(
+                obs, pos, dict(moving), name)["jump"])
+            obs["match_tick"] += agent.JUMP_COOLDOWN_TICKS
+            self.assertTrue(player.pulse_recorded_jump(
+                obs, pos, dict(moving), name)["jump"])
+
+    def test_recorded_jump_requires_matching_route_and_ground(self):
+        player = agent.Player()
+        player.map_id = agent.mirage_user_t_routes.MAP_ID
+        obs = {"side": "attack", "match_tick": 16000,
+               "static_schema_hash": agent.mirage_user_t_routes.MAP_HASH,
+               "me": {"grounded": False}}
+        action = {"move_forward": 1.0, "move_right": 0.0,
+                  "jump": True, "sprint": False}
+        self.assertFalse(player.pulse_recorded_jump(
+            obs, [60.7, 110.3, 14.3], dict(action),
+            "A_main_R6_Flierax")["jump"])
+        obs["me"]["grounded"] = True
+        action["jump"] = False
+        self.assertFalse(player.pulse_recorded_jump(
+            obs, [60.7, 110.3, 14.3], dict(action),
+            "B_apps_R13_Salazar")["jump"])
+
     def test_mirage_doghole_is_crossed_crouched_without_jump(self):
         obs = observation(75.3, 64.5, 0.0, round_index=0, tick=400,
                           match_map=MIRAGE_DOGHOLE_MAP, seat=0)

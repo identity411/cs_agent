@@ -1,0 +1,10 @@
+{
+  "mapId": "nevaio-r3-v54",
+  "mapHash": "78137c32df32b0f734cc25c35c94317632084f15c18d846114b3e5314b9e67e3",
+  "attacks": [
+    {"name": "A_mid", "site": "A", "via": "mid", "source": "nevaio-walk-t-a-mid.json"},
+    {"name": "A_long", "site": "A", "via": "long", "source": "nevaio-walk-t-a-long.json"},
+    {"name": "B_mid", "site": "B", "via": "mid", "source": "nevaio-walk-t-b-mid.json"},
+    {"name": "B_long", "site": "B", "via": "long", "source": "nevaio-walk-t-b-long.json"}
+  ]
+}

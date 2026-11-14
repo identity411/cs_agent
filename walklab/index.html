@@ -50,6 +50,11 @@
           <dt>输入</dt><dd id="inputs">-</dd>
         </dl>
         <div class="section-title">回放</div>
+        <select id="pro-route-select" aria-label="职业 demo 轨迹"><option value="">选择职业 demo 轨迹</option></select>
+        <select id="combo-select" aria-label="两段式组合"><option value="">选择两段式组合</option></select>
+        <div id="combo-status" class="route-source"></div>
+        <div class="route-actions"><input id="route-name" type="text" maxlength="80" placeholder="轨迹名称" aria-label="轨迹名称" /><button id="rename-route" type="button" disabled>重命名</button></div>
+        <div id="route-source" class="route-source"></div>
         <input id="timeline" type="range" min="0" max="0" value="0" disabled />
         <div id="time" class="time">0.00 / 0.00 秒</div>
         <div class="section-title">路径</div>

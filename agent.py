@@ -8,6 +8,8 @@ import advance_holds
 import dust2_user_ct_routes
 import dust2_user_t_routes
 import map_patches
+import nevaio_user_ct_routes
+import nevaio_user_t_routes
 import pro_retakes
 import mirage_user_ct_routes
 import mirage_user_t_routes
@@ -25,6 +27,9 @@ def user_ct_routes(map_id, geometry_hash):
     if (map_id == mirage_user_ct_routes.MAP_ID
             and geometry_hash == mirage_user_ct_routes.MAP_HASH):
         return mirage_user_ct_routes.PAIRS, mirage_user_ct_routes.RETAKES
+    if (map_id == nevaio_user_ct_routes.MAP_ID
+            and geometry_hash == nevaio_user_ct_routes.MAP_HASH):
+        return nevaio_user_ct_routes.PAIRS, nevaio_user_ct_routes.RETAKES
     return (), {}
 
 
@@ -35,6 +40,9 @@ def user_t_routes(map_id, geometry_hash):
     if (map_id == mirage_user_t_routes.MAP_ID
             and geometry_hash == mirage_user_t_routes.MAP_HASH):
         return mirage_user_t_routes.ATTACKS, mirage_user_t_routes.POSTPLANT
+    if (map_id == nevaio_user_t_routes.MAP_ID
+            and geometry_hash == nevaio_user_t_routes.MAP_HASH):
+        return nevaio_user_t_routes.ATTACKS, nevaio_user_t_routes.POSTPLANT
     return (), {}
 
 
@@ -66,7 +74,14 @@ def recorded_route(map_id, geometry_hash):
 
 def recorded_site(map_id, geometry_hash):
     info = recorded_route_info(map_id, geometry_hash)
-    return info[1] if info else None
+    if info is None:
+        return None
+    # A single legacy lane pins the team's site.  Once user-recorded
+    # candidates span both sites, the site plan must stay free.
+    attacks, _ = user_t_routes(map_id, geometry_hash)
+    if any(route["site"] != info[1] for route in attacks):
+        return None
+    return info[1]
 
 
 def recorded_route_options(map_id, geometry_hash):
@@ -81,19 +96,12 @@ def recorded_route_options(map_id, geometry_hash):
         if geometry_hash == MAP_HASH:
             options.append({"name": "B_site_20261113", "frames": ROUTE,
                             "site": SITE, "carrier_cutoff": CARRIER_CUTOFF})
-        attacks, _ = user_t_routes(map_id, geometry_hash)
-        options.extend({"name": route["name"], "frames": route["frames"],
-                        "site": route["site"],
-                        "carrier_cutoff": route["carrier_cutoff"],
-                        "terminal_hold": route["terminal_hold"]}
-                       for route in attacks)
-    elif map_id == "mirage-cs2-v54":
-        attacks, _ = user_t_routes(map_id, geometry_hash)
-        options.extend({"name": route["name"], "frames": route["frames"],
-                        "site": route["site"],
-                        "carrier_cutoff": route["carrier_cutoff"],
-                        "terminal_hold": route["terminal_hold"]}
-                       for route in attacks)
+    attacks, _ = user_t_routes(map_id, geometry_hash)
+    options.extend({"name": route["name"], "frames": route["frames"],
+                    "site": route["site"],
+                    "carrier_cutoff": route["carrier_cutoff"],
+                    "terminal_hold": route["terminal_hold"]}
+                   for route in attacks)
     return tuple(options)
 
 
@@ -268,8 +276,12 @@ def follow_trajectory(frames, cursor, pos, yaw, pitch):
     cursor = max(start, closest)
     frame = frames[cursor]
 
-    if (cursor + 1 < len(frames) and not frame[5] & 15
+    if (cursor + 1 < len(frames)
+            and (not frame[5] & 15 or not frames[cursor + 1][5] & 15)
             and math.hypot(frame[0] - pos[0], frame[1] - pos[1]) < 0.5):
+        # The final moving sample can share its position with the idle
+        # tail. Nearest-position ties retain that moving sample forever;
+        # step into the idle frame once we have reached its position.
         next_frame = frames[cursor + 1]
         if math.hypot(next_frame[0] - frame[0],
                       next_frame[1] - frame[1]) < 0.01:
@@ -2600,7 +2612,7 @@ class Player:
         tick = o["match_tick"]
         visible_enemy = bool(o.get("visible")) and not m.get("blind_ticks")
         recovering_bomb = (o["side"] == "attack"
-                           and bomb.get("state") == "dropped"
+                           and bomb.get("state") in ("world", "dropped")
                            and bomb.get("position") is not None
                            and not m.get("carrying_bomb"))
         if recovering_bomb:
@@ -2901,9 +2913,11 @@ class Player:
 
         if replay_active and not self.replay_done:
             if self.replay_rejoin_index is not None:
-                rejoin = list(replay_route[self.replay_rejoin_index][:3])
-                if distance(pos, rejoin) > 3.0:
-                    return self.move(o, rejoin, action, sprint=True)
+                # Recovery used to return directly from move(), bypassing
+                # the link timeout and cursor watchdog indefinitely.
+                self._start_attack_rejoin(
+                    o, pos, replay_route, replay_info,
+                    self.replay_rejoin_index)
                 self.replay_rejoin_index = None
             if not self.link.entered and not self.replay_done:
                 link_action = self.follow_attack_link(

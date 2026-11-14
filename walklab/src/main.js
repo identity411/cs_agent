@@ -8,6 +8,7 @@ import {appendFrame, applyMouseLook, cameraYaw, createRecording, movementVector,
   sampleFrame, validateRecording} from './recording.js';
 import {advanceJump, chooseStart, groundProbeHeight, nearestNavStart,
   retakeStart, spawnChoices} from './setup.js';
+import {buildCombinations, catalogRoutes, renameRoute} from './pro-routes.js';
 import './style.css';
 
 let selectedMap = MAPS[0];
@@ -57,6 +58,10 @@ const pose = {position: [...start.position], yaw: start.yaw, pitch: 0};
 const keys = new Set();
 let mouse = [0, 0];
 let recording = null;
+let proRoutes = [];
+let combinations = [];
+let activeCombination = null;
+let combinationPhase = null;
 let mode = 'idle';
 let playIndex = 0;
 let loadedModel = null;
@@ -79,7 +84,9 @@ const ui = Object.fromEntries(['record', 'play', 'export', 'timeline', 'time', '
   'model-file', 'recording-file', 'rerecord', 'map-select', 'map-id', 'side-t', 'side-ct',
   'start-select', 'pick-start', 'use-position', 'retake-a-b', 'retake-b-a',
   'side-label', 'start-label', 'purpose-label', 'point-name', 'save-point',
-  'edit-point', 'delete-point',
+  'edit-point', 'delete-point', 'pro-route-select', 'combo-select', 'combo-status',
+  'route-name', 'rename-route',
+  'route-source',
   'point-status'].map(id => [id, document.getElementById(id)]));
 
 function buildMapVisuals() {
@@ -129,7 +136,9 @@ function updateStartDisplay() {
   ui['side-label'].textContent = side === 'attack' ? 'T' : 'CT';
   ui['start-label'].textContent = start.label || '自选点位';
   ui['purpose-label'].textContent = purpose === 'retake'
-    ? `${originSite} → ${targetSite} 回防` : '普通路线';
+    ? `${originSite} → ${targetSite} 回防`
+    : purpose === 'attack' ? `进攻 ${targetSite}`
+      : purpose === 'opening' ? '开局防守' : '普通路线';
   startMarker.position.set(start.position[0], start.position[2] + 0.05, start.position[1]);
 }
 
@@ -348,7 +357,7 @@ function updateTrail() {
   routeLine.geometry.dispose();
   routeLine.geometry = new THREE.BufferGeometry().setFromPoints(routePoints);
   ui['path-summary'].textContent = recording?.frames.length
-    ? `${recording.frames.length} 帧 · ${(recording.frames.length / hz).toFixed(2)} 秒 · ${modelName || '导航预览'}`
+    ? `${recording.name ? recording.name + ' · ' : ''}${recording.frames.length} 帧 · ${(recording.frames.length / recording.hz).toFixed(2)} 秒 · ${modelName || '导航预览'}`
     : '尚无记录';
 }
 
@@ -362,7 +371,16 @@ function applyRecordedFrame(frame) {
 
 function step() {
   if (mode === 'playing') {
-    if (playIndex >= recording.frames.length) { setMode('paused'); return; }
+    if (playIndex >= recording.frames.length) {
+      if (activeCombination && combinationPhase === 'first') {
+        combinationPhase = 'loop';
+        loadRecording(structuredClone(proRoutes.find(r => r.id === activeCombination.loopRouteId)));
+        updateCombinationStatus();
+        setMode('playing');
+      } else if (activeCombination && combinationPhase === 'loop') {
+        playIndex = 0;
+      } else { setMode('paused'); return; }
+    }
     applyRecordedFrame(sampleFrame(recording, playIndex++));
   } else if (!pickingStart && (mode === 'recording' || pointerInside ||
       document.pointerLockElement === renderer.domElement)) {
@@ -379,15 +397,16 @@ function step() {
   ui.position.textContent = pose.position.map(n => n.toFixed(2)).join(', ');
   ui.angles.textContent = `${pose.yaw.toFixed(3)}, ${pose.pitch.toFixed(3)} rad`;
   ui.frames.textContent = `${recording?.frames.length || 0} 帧`;
-  const total = (recording?.frames.length || 0) / hz;
-  const current = mode === 'playing' || mode === 'paused' ? playIndex / hz : total;
+  const total = (recording?.frames.length || 0) / (recording?.hz || hz);
+  const current = mode === 'playing' || mode === 'paused' ? playIndex / (recording?.hz || hz) : total;
   ui.time.textContent = `${current.toFixed(2)} / ${total.toFixed(2)} 秒`;
 }
 
 function animate(now) {
   accumulator += Math.min((now - previousTime) / 1000, 0.2);
   previousTime = now;
-  while (accumulator >= dt) { step(); accumulator -= dt; }
+  const stepTime = mode === 'playing' ? 1 / recording.hz : dt;
+  while (accumulator >= stepTime) { step(); accumulator -= stepTime; }
   applyPose();
   renderer.render(scene, pickingStart ? pickCamera : camera);
   requestAnimationFrame(animate);
@@ -501,10 +520,11 @@ ui.play.onclick = () => {
   setMode('playing');
 };
 ui.export.onclick = () => {
-  const blob = new Blob([JSON.stringify(recording, null, 2)], {type: 'application/json'});
+  const payload = activeCombination || recording;
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `${selectedMap.key}-walk-${new Date().toISOString().replaceAll(':', '-')}.json`;
+  link.download = `${selectedMap.key}-${activeCombination ? 'combination' : 'walk'}-${new Date().toISOString().replaceAll(':', '-')}.json`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 };
@@ -512,6 +532,71 @@ ui.timeline.oninput = () => {
   if (!recording?.frames.length) return;
   setMode('paused'); playIndex = Number(ui.timeline.value);
   applyRecordedFrame(sampleFrame(recording, playIndex));
+};
+function loadRecording(loaded) {
+  validateRecording(loaded);
+  const target = mapForRecording(loaded);
+  if (!target || target !== selectedMap) throw new Error('地图版本不匹配');
+  side = loaded.side || 'attack';
+  purpose = loaded.purpose || null;
+  originSite = loaded.originSite || null;
+  targetSite = loaded.targetSite || null;
+  start = loaded.start ? {...loaded.start, id: loaded.start.source || 'custom',
+    label: loaded.source?.player || loaded.start.source || '导入记录起点'}
+    : {id: 'custom', label: '导入记录起点',
+      position: [...loaded.frames[0].position], yaw: loaded.frames[0].yaw};
+  ui['start-select'].value = ui['start-select'].querySelector(`option[value="${start.id}"]`)
+    ? start.id : 'custom';
+  updateStartDisplay();
+  recording = loaded; playIndex = 0; tick = loaded.frames.length;
+  routePoints.length = 0;
+  for (const frame of loaded.frames) routePoints.push(new THREE.Vector3(frame.position[0], frame.position[2] + 0.12, frame.position[1]));
+  updateTrail(); ui.timeline.max = String(loaded.frames.length - 1);
+  if (loaded.frames.length) applyRecordedFrame(loaded.frames[0]);
+  ui['route-name'].value = loaded.name || '';
+  ui['rename-route'].disabled = !loaded.frames.length;
+  const source = loaded.source;
+  ui['route-source'].textContent = source
+    ? `${source.demo} · ${source.player} · R${source.round} · tick ${source.startTick}–${source.endTick} · 轨迹内未死亡`
+    : '';
+  setMode('paused');
+}
+
+function updateCombinationStatus() {
+  const combo = activeCombination;
+  ui['combo-status'].textContent = combo
+    ? `${combinationPhase === 'loop' ? '守点循环' : '开局/进攻'} · 衔接 ${combo.joinDistance} m · 循环闭合 ${combo.loopClosureDistance} m · 预览切段无导航`
+    : '';
+}
+
+ui['pro-route-select'].onchange = () => {
+  const route = proRoutes.find(item => item.id === ui['pro-route-select'].value);
+  if (route) {
+    activeCombination = null; combinationPhase = null;
+    ui['combo-select'].value = '';
+    updateCombinationStatus();
+    loadRecording(structuredClone(route));
+  }
+};
+ui['combo-select'].onchange = () => {
+  activeCombination = combinations.find(item => item.id === ui['combo-select'].value) || null;
+  if (!activeCombination) { combinationPhase = null; updateCombinationStatus(); return; }
+  combinationPhase = 'first';
+  ui['pro-route-select'].value = '';
+  loadRecording(structuredClone(proRoutes.find(r => r.id === activeCombination.firstRouteId)));
+  updateCombinationStatus();
+};
+ui['rename-route'].onclick = () => {
+  try {
+    recording = renameRoute(recording, ui['route-name'].value);
+    const selected = proRoutes.findIndex(item => item.id === recording.id);
+    if (selected >= 0) {
+      proRoutes[selected] = recording;
+      localStorage.setItem(`walklab:route-name:${recording.id}`, recording.name);
+      ui['pro-route-select'].selectedOptions[0].textContent = recording.name;
+    }
+    updateTrail();
+  } catch (error) { alert(error.message); }
 };
 ui['recording-file'].onchange = async event => {
   const file = event.target.files[0];
@@ -522,23 +607,7 @@ ui['recording-file'].onchange = async event => {
     const target = mapForRecording(loaded);
     if (!target) throw new Error('地图版本不匹配');
     if (target !== selectedMap) await selectMap(target.key);
-    side = loaded.side || 'attack';
-    purpose = loaded.purpose || null;
-    originSite = loaded.originSite || null;
-    targetSite = loaded.targetSite || null;
-    start = loaded.start ? {...loaded.start, id: loaded.start.source,
-      label: loaded.start.source === 'custom' ? '自选点位' : loaded.start.source}
-      : {id: 'custom', label: '导入记录起点',
-        position: [...loaded.frames[0].position], yaw: loaded.frames[0].yaw};
-    ui['start-select'].value = ui['start-select'].querySelector(`option[value="${start.id}"]`)
-      ? start.id : 'custom';
-    updateStartDisplay();
-    recording = loaded; playIndex = 0; tick = loaded.frames.length;
-    routePoints.length = 0;
-    for (const frame of loaded.frames) routePoints.push(new THREE.Vector3(frame.position[0], frame.position[2] + 0.12, frame.position[1]));
-    updateTrail(); ui.timeline.max = String(loaded.frames.length - 1);
-    if (loaded.frames.length) applyRecordedFrame(loaded.frames[0]);
-    setMode('paused');
+    loadRecording(loaded);
   } catch (error) { alert(`导入失败：${error.message}`); }
 };
 ui['model-file'].onchange = async event => {
@@ -624,6 +693,14 @@ async function selectMap(key) {
   keys.clear(); pointerInside = false; lastPointer = null;
   selectedMap = entry;
   map = entry.staticMap.map;
+  proRoutes = [];
+  combinations = []; activeCombination = null; combinationPhase = null;
+  ui['pro-route-select'].replaceChildren(new Option('选择职业 demo 轨迹', ''));
+  ui['combo-select'].replaceChildren(new Option('选择两段式组合', ''));
+  updateCombinationStatus();
+  ui['route-name'].value = '';
+  ui['route-source'].textContent = '';
+  ui['rename-route'].disabled = true;
   savedStarts = [];
   ui['point-status'].textContent = '';
   side = 'attack';
@@ -650,6 +727,19 @@ async function selectMap(key) {
   ui['map-id'].textContent = map.id;
   ui['map-select'].value = key;
   fillStarts();
+  if (key === 'dust2' || key === 'mirage') {
+    fetch(`/routes/${key}-pro.json`).then(response => {
+      if (!response.ok) throw new Error('职业轨迹目录不可用');
+      return response.json();
+    }).then(catalog => {
+      if (version !== mapLoadVersion) return;
+      proRoutes = catalogRoutes(catalog, map).map(route => ({...route,
+        name: localStorage.getItem(`walklab:route-name:${route.id}`) || route.name}));
+      for (const route of proRoutes) ui['pro-route-select'].add(new Option(route.name, route.id));
+      combinations = buildCombinations(proRoutes, map);
+      for (const combo of combinations) ui['combo-select'].add(new Option(combo.name, combo.id));
+    }).catch(error => { if (version === mapLoadVersion) ui['route-source'].textContent = error.message; });
+  }
   ui['start-select'].value = 'T:0';
   loadSavedStarts(version);
   updateStartDisplay();

@@ -18,14 +18,14 @@ contacts the explicitly configured base URL.
   `agx-api-key-<name>`, or repo `.env`; never print it.
 - `--account NAME` selects an account. Without it, `RSI_ACCOUNT` wins, then
   `main`, then a sole configured account; an ambiguous choice is an error.
-  `collect` defaults to **all** configured accounts.
+  `collect` and `kd` default to **all** configured accounts.
 - `RSI_COMPETITION_ID` — defaults to the FPS competition in `.env`;
   `RSI_ACCOUNT_<NAME>_COMPETITION_ID` can override per account.
   Competition aliases live in `RSI_COMPETITION_<GAME>` (for example
   `RSI_COMPETITION_FPS` / `RSI_COMPETITION_RACING`); use
   `--game-id fps|racing` or `--competition-id fps|racing` instead of UUIDs.
 - Optional: `RSI_AGENT_ID` (`main` only), `--match-id`, `--seat`.
-  `--agent-id` / `--seat` are rejected for multi-account `collect`.
+  `--agent-id` / `--seat` are rejected for multi-account `collect` / `kd`.
 
 Account listing and read-only live checks live in the submit skill:
 
@@ -63,6 +63,15 @@ python3 .claude/skills/agx-match-query/scripts/agx_matches.py report
 # Same, for a specific match and seat.
 python3 .claude/skills/agx-match-query/scripts/agx_matches.py report \
   --match-id da110811-9f35-4c86-9492-b322b1302391 --seat 7
+
+# Quick K/D from public events: latest finished match for every configured
+# account (kills/deaths, K/D, score, map, shots/hits/accuracy/damage).
+# Use --match-limit N for recent matches with a pooled K/D, or --match-id.
+python3 .claude/skills/agx-match-query/scripts/agx_matches.py kd
+python3 .claude/skills/agx-match-query/scripts/agx_matches.py kd \
+  --account main --match-limit 5
+python3 .claude/skills/agx-match-query/scripts/agx_matches.py kd \
+  --account account2 --match-id <id> --json
 
 # List FPS matches; mine carry my_seat, my_seat_position, my_team, and
 # my_seat_label (e.g. "seat 7 (0-based) = team 1 = 第 8 个玩家").

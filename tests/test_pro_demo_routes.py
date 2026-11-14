@@ -71,6 +71,7 @@ class ProDemoRouteTests(unittest.TestCase):
         result = classify_route(frames, sites, "A")
         self.assertLess(result["aim_forward_fraction"], 0.1)
 
+    @unittest.skip("pro demo routes are review-only; match runtime uses user recordings")
     def test_ct_retake_uses_demo_route_then_goes_directly_to_bomb(self):
         row = json.loads((Path(__file__).parent / "fixtures" /
                           "dust2_static.json").read_text())["map"]
@@ -131,6 +132,7 @@ class ProDemoRouteTests(unittest.TestCase):
         agent.act(obs)
         self.assertIsNone(agent._player.retake_route)
 
+    @unittest.skip("pro demo routes are review-only; match runtime uses user recordings")
     def test_both_maps_have_both_retake_directions(self):
         for filename in ("dust2", "mirage"):
             with self.subTest(map=filename):
@@ -155,6 +157,7 @@ class ProDemoRouteTests(unittest.TestCase):
                     agent.act(obs)
                     self.assertIsNotNone(agent._player.retake_route)
 
+    @unittest.skip("pro demo routes are review-only; match runtime uses user recordings")
     def test_retake_requires_live_ct_and_plant(self):
         row = json.loads((Path(__file__).parent / "fixtures" /
                           "dust2_static.json").read_text())["map"]
@@ -171,6 +174,7 @@ class ProDemoRouteTests(unittest.TestCase):
         agent.act(obs)
         self.assertIsNone(agent._player.retake_route)
 
+    @unittest.skip("pro demo routes are review-only; match runtime uses user recordings")
     def test_stalled_retake_hands_back_to_navigation(self):
         row = json.loads((Path(__file__).parent / "fixtures" /
                           "dust2_static.json").read_text())["map"]
@@ -188,6 +192,7 @@ class ProDemoRouteTests(unittest.TestCase):
         self.assertTrue(agent._player.retake_done)
         self.assertIsNotNone(agent._player.goal)
 
+    @unittest.skip("pro demo routes are review-only; match runtime uses user recordings")
     def test_low_fuse_time_keeps_sprinting_on_demo_route(self):
         row = json.loads((Path(__file__).parent / "fixtures" /
                           "dust2_static.json").read_text())["map"]
@@ -205,6 +210,7 @@ class ProDemoRouteTests(unittest.TestCase):
         self.assertTrue(action["sprint"])
         self.assertIsNone(agent._player.goal)
 
+    @unittest.skip("pro demo routes are review-only; match runtime uses user recordings")
     def test_route_join_steers_directly_without_astar(self):
         row = json.loads((Path(__file__).parent / "fixtures" /
                           "dust2_static.json").read_text())["map"]

@@ -1,8 +1,8 @@
 # 规范：开火距离分层（近距扫射 / 中距只点头点射 / 远距只点头点射）
 
-Status: **点射版已随 `1113-v0.10` 提交；2026-11-13 回退三连发实验，恢复中远距单发点射并统一为 0.6 s 一发；本地 111/111 unittest 通过，待提交 / 新对局验证**
+Status: **点射版已随 `1113-v0.10` 提交；0.6 s 统一节奏随 `1113-v0.16` 提交（`main` v12 / `account2` v15 admission `passed` 并激活）；本地 126/126 unittest 通过，待新对局验证**
 Date: 2026-11-13
-Submission: [1113-v0.10](../submissions/1113-v0.10/README.md)
+Submission: [1113-v0.10](../submissions/1113-v0.10/README.md) · [1113-v0.16](../submissions/1113-v0.16/README.md)
 Related specs: [11-13-nevaio-r9-fire-discipline.md](./11-13-nevaio-r9-fire-discipline.md)（刹停门；本文取代其“90 m 仍扫射”的验收）· [11-12-advance-holds.md](./11-12-advance-holds.md)（§3.2 BRAKE / §6 TAP）· [11-12-match-observability.md](./11-12-match-observability.md)（开火 / 命中回填）
 
 ## 1. 需求

@@ -1109,6 +1109,194 @@ def cmd_collect(args) -> int:
     return 2 if failed else 0
 
 
+def kd_match(client, match: dict, seat: int | None = None) -> dict:
+    mine = mine_participant(match)
+    actual_seat = seat if seat is not None else (
+        mine.get("seat") if mine else None)
+    item = {
+        "match_id": match.get("id"),
+        "finished_at": match.get("finished_at"),
+        "seat": actual_seat,
+        "seat_position": (
+            actual_seat + 1 if actual_seat is not None else None),
+        "team": (participant_team(match, actual_seat)
+                 if actual_seat is not None else None),
+        "seat_label": (seat_label(match, actual_seat)
+                       if actual_seat is not None else None),
+        "result": match.get("result"),
+    }
+    if actual_seat is None:
+        item["error"] = "no is_mine participant; pass --seat"
+        return item
+    try:
+        index = fetch_index(client, match["id"])
+        static = fetch_static(client, match["id"], index)
+        events = fetch_events(client, match["id"], index)
+        stats = event_stats(events, actual_seat)
+        kills, deaths = stats["kill_credits"], stats["deaths"]
+        item.update({
+            "map_id": (static.get("map") or {}).get("id"),
+            "kills": kills,
+            "deaths": deaths,
+            "kd": round(kills / deaths, 2) if deaths else None,
+            "shots": stats["shots"],
+            "hits": stats["hits"],
+            "accuracy_percent": stats["accuracy_percent"],
+            "damage": stats["damage"],
+            "rounds": len(stats["rounds"]),
+        })
+    except QueryError as exc:
+        item["error"] = str(exc)
+    return item
+
+
+def kd_result_text(item: dict) -> str:
+    result = item.get("result") or {}
+    scores = result.get("round_wins") or []
+    team = item.get("team")
+    winner = result.get("winner")
+    if team not in (0, 1) or len(scores) < 2:
+        return ""
+    opponent = 1 - team
+    outcome = "W" if winner == team else "L"
+    return f"{outcome} {scores[team]}-{scores[opponent]}"
+
+
+def kd_account(account, args) -> dict:
+    base = (args.base_url or account.base_url or "").strip()
+    entry = {
+        "name": account.name,
+        "key_fingerprint": account.fingerprint,
+        "agent_id": args.agent_id or account.agent_id,
+        "base_url": base or None,
+        "matches": [],
+        "errors": [],
+    }
+    if not account.key:
+        entry["errors"].append("missing API key")
+        return entry
+    if not base:
+        entry["errors"].append(
+            f"no base URL; set RSI_URL or "
+            f"RSI_ACCOUNT_{account.name.upper()}_URL")
+        return entry
+    if not base.startswith(("http://", "https://")):
+        entry["errors"].append(
+            f"base URL must start with http:// or https://: {base!r}")
+        return entry
+    try:
+        competition_id = AGX.resolve_competition_id(
+            args.competition_id,
+            account=account,
+            game_id=args.game_id,
+            environ=os.environ,
+        )
+    except AGX.AccountError as exc:
+        entry["errors"].append(str(exc))
+        return entry
+    game_id = effective_game_id(args, competition_id)
+    entry["competition_id"] = competition_id
+    entry["game_id"] = game_id
+    client = AGX.Client(base, account.key)
+    try:
+        if args.match_id:
+            match, _ = find_match(
+                client, competition_id, args.match_id, game_id)
+            matches = [match]
+        else:
+            matches = sorted_mine_matches(
+                client, competition_id, game_id)[:args.match_limit]
+        if not matches:
+            entry["errors"].append("no finished matches")
+    except QueryError as exc:
+        entry["errors"].append(str(exc))
+        matches = []
+    for match in matches:
+        item = kd_match(client, match, args.seat)
+        entry["matches"].append(item)
+        if item.get("error"):
+            entry["errors"].append(
+                f"{item.get('match_id')}: {item['error']}")
+    played = [item for item in entry["matches"] if not item.get("error")]
+    kills = sum(item.get("kills", 0) for item in played)
+    deaths = sum(item.get("deaths", 0) for item in played)
+    entry["aggregate"] = {
+        "matches": len(played),
+        "kills": kills,
+        "deaths": deaths,
+        "kd": round(kills / deaths, 2) if deaths else None,
+    }
+    return entry
+
+
+def cmd_kd(args) -> int:
+    if args.match_limit < 1:
+        raise QueryError("--match-limit must be >= 1")
+    accounts = AGX.discover_accounts()
+    selected = AGX.select_accounts_for_cli(
+        accounts,
+        account=args.account,
+        accounts_arg=args.accounts,
+        all_accounts=args.all_accounts,
+        default_all=True,
+        environ=os.environ,
+        require_keys=False,
+    )
+    if args.agent_id and len(selected) > 1:
+        raise AGX.AccountError(
+            "--agent-id is account-scoped; select a single account")
+    if args.seat is not None and len(selected) > 1:
+        raise AGX.AccountError(
+            "--seat is account-scoped; select a single account")
+    duplicates = AGX.duplicate_key_groups(selected)
+    if duplicates:
+        detail = "; ".join(
+            f"{', '.join(names)} -> {fingerprint}"
+            for fingerprint, names in duplicates.items())
+        print(
+            f"warning: selected accounts share an API key: {detail}",
+            file=sys.stderr,
+        )
+    report = {"accounts": [], "ok": True}
+    for account in selected:
+        entry = kd_account(account, args)
+        report["accounts"].append(entry)
+        if entry["errors"]:
+            report["ok"] = False
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0 if report["ok"] else 2
+    for entry in report["accounts"]:
+        aggregate = entry.get("aggregate") or {}
+        if not entry["matches"]:
+            for error in entry["errors"]:
+                print(f"{entry['name']}: error: {error}", file=sys.stderr)
+            continue
+        kd_value = aggregate.get("kd")
+        pooled = ("inf" if kd_value is None and aggregate.get("kills")
+                  else kd_value)
+        print(f"{entry['name']}: K/D {aggregate.get('kills', 0)}/"
+              f"{aggregate.get('deaths', 0)} = {pooled} "
+              f"across {aggregate.get('matches', 0)} match(es)")
+        for item in entry["matches"]:
+            if item.get("error"):
+                print(f"  {item.get('match_id')}: error: {item['error']}",
+                      file=sys.stderr)
+                continue
+            ratio = item.get("kd")
+            ratio_text = "inf" if ratio is None and item.get("kills") else ratio
+            outcome = kd_result_text(item)
+            print(f"  {item['match_id']}  {item.get('map_id') or '?'}  "
+                  f"{item.get('finished_at') or '?'}  {outcome}  "
+                  f"K/D {item.get('kills')}/{item.get('deaths')} = "
+                  f"{ratio_text}  {item.get('seat_label')}  "
+                  f"shots {item.get('shots')} hits {item.get('hits')} "
+                  f"acc {item.get('accuracy_percent')}%  "
+                  f"damage {item.get('damage')}  "
+                  f"rounds {item.get('rounds')}")
+    return 0 if report["ok"] else 2
+
+
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1171,6 +1359,15 @@ def make_parser() -> argparse.ArgumentParser:
     common(replay)
     replay.add_argument("--out-dir")
     replay.set_defaults(func=cmd_replay)
+
+    kd = sub.add_parser(
+        "kd", help="latest-match K/D for one or all accounts")
+    common(kd, multi=True)
+    kd.add_argument(
+        "--match-limit", type=int, default=1,
+        help="recent matches per account (default: 1)")
+    kd.add_argument("--json", action="store_true")
+    kd.set_defaults(func=cmd_kd)
 
     collect = sub.add_parser(
         "collect", help="collect per-account snapshots under data/accounts")

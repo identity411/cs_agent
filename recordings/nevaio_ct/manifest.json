@@ -1,0 +1,16 @@
+{
+  "mapId": "nevaio-r3-v54",
+  "mapHash": "78137c32df32b0f734cc25c35c94317632084f15c18d846114b3e5314b9e67e3",
+  "pairs": [
+    {"name": "A_mid", "site": "A", "via": "mid", "opening": "nevaio-walk-ct-a-mid.json", "hold": null, "holdMode": "final_pose"},
+    {"name": "A_long", "site": "A", "via": "long", "opening": "nevaio-walk-ct-a-long.json", "hold": null, "holdMode": "final_pose"},
+    {"name": "B_mid", "site": "B", "via": "mid", "opening": "nevaio-walk-ct-b-mid.json", "hold": null, "holdMode": "final_pose"},
+    {"name": "B_long", "site": "B", "via": "long", "opening": "nevaio-walk-ct-b-long.json", "hold": null, "holdMode": "final_pose"}
+  ],
+  "retakes": [
+    {"name": "A_to_B_mid", "origin": "A", "target": "B", "via": "mid", "source": "nevaio-walk-a-b-mid.json"},
+    {"name": "A_to_B_long", "origin": "A", "target": "B", "via": "long", "source": "nevaio-walk-a-b-long.json"},
+    {"name": "B_to_A_mid", "origin": "B", "target": "A", "via": "mid", "source": "nevaio-walk-b-a-mid.json"},
+    {"name": "B_to_A_long", "origin": "B", "target": "A", "via": "long", "source": "nevaio-walk-b-a-long.json"}
+  ]
+}
