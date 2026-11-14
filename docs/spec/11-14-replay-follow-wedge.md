@@ -1,8 +1,8 @@
 # Badcase + 规范：T 进攻录制路线入口/跟随卡死与通用 action layer
 
-Status: **已定位并由 P0–P4 修复于本轮工作区；本地 `187/187` 测试通过（6 skipped），正式提交/对局待回填。** P0–P4 指：倒退意图卡死检测、T 进攻入口接入 `link_to_route(first)`、跟随偏离重接 + cursor 进度看门狗、无进展路线降权、`LinkState` 通用化与日志统一。
+Status: **已定位并由 P0–P4 修复，随 `1114-v0.20` 提交：`main` version 16 / `account2` version 19 admission 均 `passed` 并激活（entry code hash `741a35ac2c2d`）；本地 `187/187` 测试通过（6 skipped），实战效果待回填。** P0–P4 指：倒退意图卡死检测、T 进攻入口接入 `link_to_route(first)`、跟随偏离重接 + cursor 进度看门狗、无进展路线降权、`LinkState` 通用化与日志统一。
 Date: 2026-11-14
-Submission: 待提交
+Submission: [1114-v0.20](../submissions/1114-v0.20/README.md)
 Related specs: [11-14-route-linker.md](./11-14-route-linker.md)（通用 A* 链接器；本文把它从 CT 回防扩展到 T 进攻入口与跟随阶段）· [11-13-t-route-rotation.md](./11-13-t-route-rotation.md)（路线权重轮换；本文新增“无进展”失败）· [11-12-pathing-routes.md](./11-12-pathing-routes.md)（A* / 卡住恢复）· [11-12-stuck-at-spawn.md](./11-12-stuck-at-spawn.md)（A* 出生点卡住）· [11-12-mirage-spawn-jump.md](./11-12-mirage-spawn-jump.md)（T 出生点西侧拐角；其修复只覆盖 `move()`）· [11-14-pro-demo-walklab-pipeline.md](./11-14-pro-demo-walklab-pipeline.md)（Mirage T demo 路线）· [agx-match-query skill](../../.claude/skills/agx-match-query/SKILL.md)（公开回放取证）
 
 ## 0. 文档目的
@@ -240,6 +240,7 @@ link map=mirage-cs2-v54 seat=5 round=0 segment=attack route=A_palace_R4_ay0k
 
 ## 8. 验收与待回填
 
+- [x] 随 `1114-v0.20` 提交：`main` version 16 / `account2` version 19，admission `passed` 并激活（entry code hash `741a35ac2c2d`）
 - [ ] 正式对局中 T 进攻不再出现“存活 + 满弹主武器 + 整回合 0 发射 + 同一坐标静止 >20 s”
 - [ ] 入口/重接日志出现 `segment=attack result=entered`，无 `blocked/timeout` 长尾
 - [ ] 无进展路线在下一回合被替换，不再连续复读

@@ -28,3 +28,8 @@
 | `1113-v0.13` | 2026-11-13 | 已提交；admission passed；main v9 / account2 v12（Borgo、Molo、Nevaio 用户录制路线） | [README](1113-v0.13/README.md) |
 | `1113-v0.14` | 2026-11-13 | 已提交；admission passed；main v10 / account2 v13（Dust2、Mirage CT 职业 demo 回防路线） | [README](1113-v0.14/README.md) |
 | `1113-v0.15` | 2026-11-13 | 已提交；admission passed；main v11 / account2 v14（Mirage/Dust2 A/B CT 防守 peek loop） | [README](1113-v0.15/README.md) |
+| `1113-v0.16` | 2026-11-13 | 已提交；admission passed；main v12 / account2 v15（T 方多路线权重轮换 + Dust2 B 路线 / 点射 0.6 s） | [README](1113-v0.16/README.md) |
+| `1114-v0.17` | 2026-11-13 | 已提交；admission passed；main v13 / account2 v16（首拍分块加载 nav，修复 tick 0 fault） | [README](1114-v0.17/README.md) |
+| `1114-v0.18` | 2026-11-13 | 已提交；admission passed；main v14 / account2 v17（后坐力 / 掉包恢复 / 购买预算 / Mirage CT 与 T 路线） | [README](1114-v0.18/README.md) |
+| `1114-v0.19` | 2026-11-14 | 已提交；admission passed；main v15 / account2 v18（通用轨迹链接器 / CT 守点→回防 A* 接路 / B_3 禁用） | [README](1114-v0.19/README.md) |
+| `1114-v0.20` | 2026-11-14 | 已提交；admission passed；main v16 / account2 v19（T 进攻入口 A* 接路 / 偏离重接 / cursor 看门狗 / 无进展降权） | [README](1114-v0.20/README.md) |
