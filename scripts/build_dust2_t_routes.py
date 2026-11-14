@@ -1,0 +1,157 @@
+"""Compile user-recorded Dust2 T routes and the B post-plant car hold."""
+
+import argparse
+import base64
+import hashlib
+import json
+import math
+import zlib
+from pathlib import Path
+
+from scripts.build_r3_replays import CARRIER_HANDOFF_DISTANCE, KEY_BITS
+
+
+def _recording(path, map_id, map_hash, sides):
+    raw = path.read_bytes()
+    data = json.loads(raw)
+    if (data.get("format") != "walklab-v2"
+            or data.get("mapId") != map_id
+            or data.get("mapHash") != map_hash
+            or data.get("hz") != 20 or data.get("side") not in sides):
+        raise ValueError(f"invalid Dust2 T recording identity: {path.name}")
+    rows = []
+    for tick, frame in enumerate(data.get("frames", ())):
+        if frame.get("tick") != tick:
+            raise ValueError(f"noncontiguous ticks: {path.name}")
+        values = [*(frame.get("position") or ()), frame.get("yaw"),
+                  frame.get("pitch")]
+        if (len(values) != 5
+                or any(not isinstance(v, (int, float)) or not math.isfinite(v)
+                       for v in values)):
+            raise ValueError(f"invalid pose: {path.name}")
+        keys = frame.get("keys")
+        if not isinstance(keys, list) or any(key not in KEY_BITS for key in keys):
+            raise ValueError(f"invalid keys: {path.name}")
+        rows.append(tuple(round(v, 4) for v in values)
+                    + (sum(KEY_BITS[key] for key in set(keys)),))
+    if len(rows) < 2:
+        raise ValueError(f"too few frames: {path.name}")
+    return tuple(rows), hashlib.sha256(raw).hexdigest(), data.get("side")
+
+
+def _travel(frames):
+    return sum(math.dist(a[:3], b[:3]) for a, b in zip(frames, frames[1:]))
+
+
+def compile_manifest(manifest_path, static_map):
+    manifest = json.loads(manifest_path.read_text())
+    fixture = static_map["map"]
+    map_id, map_hash = manifest["mapId"], manifest["mapHash"]
+    if (map_id != fixture["id"] or map_hash != fixture["geometry_hash"]):
+        raise ValueError("Dust2 fixture hash mismatch")
+    sites = {site["id"]: site["center"] for site in fixture["sites"]}
+
+    def read(name, sides):
+        path = (manifest_path.parent / name).resolve()
+        if not path.is_file():
+            raise ValueError(f"missing source: {name}")
+        return _recording(path, map_id, map_hash, sides)
+
+    attacks = []
+    names = set()
+    for item in manifest["attacks"]:
+        if item["name"] in names:
+            raise ValueError(f"duplicate T route: {item['name']}")
+        names.add(item["name"])
+        frames, sha, _ = read(item["source"], ("attack",))
+        if item["site"] not in sites or _travel(frames) < 5.0:
+            raise ValueError(f"invalid T route: {item['name']}")
+        center = sites[item["site"]]
+        cutoff = next((index for index, frame in enumerate(frames)
+                       if math.dist(frame[:2], center[:2])
+                       <= CARRIER_HANDOFF_DISTANCE), None)
+        cutoff_kind = "site_radius"
+        if cutoff is None:
+            # The lane ends outside the 12 m handoff radius; the carrier
+            # follows the full route, then A* finishes the plant.
+            cutoff, cutoff_kind = len(frames) - 1, "route_end"
+        attacks.append({"name": item["name"], "site": item["site"],
+                        "carrier_cutoff": cutoff,
+                        "carrier_cutoff_kind": cutoff_kind,
+                        "terminal_hold": bool(item.get("terminalHold")),
+                        "source_id": item.get("id", item["name"]),
+                        "sha256": sha, "frames": frames})
+    if not attacks:
+        raise ValueError("no T routes in manifest")
+    postplant = {}
+    for item in manifest.get("postplant", ()):
+        if item["name"] in names:
+            raise ValueError(f"duplicate route name: {item['name']}")
+        names.add(item["name"])
+        # A CT hold recording may be reused as the T post-plant hold.
+        frames, sha, side = read(item["source"], ("attack", "defend"))
+        if (item["site"] not in sites
+                or math.dist(frames[-1][:2], frames[0][:2]) > 2.0
+                or _travel(frames) < 0.5):
+            raise ValueError(f"invalid post-plant hold: {item['name']}")
+        postplant.setdefault(item["site"], []).append({
+            "name": item["name"], "source_id": item.get("id", item["name"]),
+            "source_side": side, "sha256": sha, "frames": frames})
+    return {"map_id": map_id, "map_hash": map_hash,
+            "attacks": attacks, "postplant": postplant}
+
+
+def _encode_frames(frames):
+    raw = json.dumps([list(frame) for frame in frames],
+                     separators=(",", ":")).encode("ascii")
+    return base64.b85encode(zlib.compress(raw, 9)).decode("ascii")
+
+
+def _payload_lines(payload, indent):
+    return [f'{indent}"{payload[i:i + 96]}"'
+            for i in range(0, len(payload), 96)]
+
+
+def write_module(compiled, output):
+    lines = ['"""User-recorded Dust2 T routes; generated by build_dust2_t_routes.py."""',
+             "import base64",
+             "import json",
+             "import zlib",
+             "",
+             "",
+             "def _frames(payload):",
+             "    data = zlib.decompress(base64.b85decode(payload))",
+             "    return tuple(tuple(row) for row in json.loads(data))",
+             "",
+             "",
+             f"MAP_ID = {compiled['map_id']!r}",
+             f"MAP_HASH = {compiled['map_hash']!r}", "ATTACKS = ("]
+    for route in compiled["attacks"]:
+        lines.append("    {")
+        for key in ("name", "site", "carrier_cutoff", "carrier_cutoff_kind",
+                    "terminal_hold", "source_id", "sha256"):
+            lines.append(f"        {key!r}: {route[key]!r},")
+        lines.append("        'frames': _frames(")
+        lines.extend(_payload_lines(_encode_frames(route["frames"]), "            "))
+        lines.extend(("        ),", "    },"))
+    lines.extend((")", "POSTPLANT = {"))
+    for site in sorted(compiled["postplant"]):
+        lines.append(f"    {site!r}: (")
+        for route in compiled["postplant"][site]:
+            lines.append(f"        {{'name': {route['name']!r}, 'source_id': {route['source_id']!r},")
+            lines.append(f"         'source_side': {route['source_side']!r}, 'sha256': {route['sha256']!r}, 'frames': _frames(")
+            lines.extend(_payload_lines(_encode_frames(route["frames"]), "            "))
+            lines.append("        )},")
+        lines.append("    ),")
+    lines.append("}")
+    output.write_text("\n".join(lines) + "\n")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("manifest", type=Path)
+    parser.add_argument("static_map", type=Path)
+    parser.add_argument("output", type=Path)
+    args = parser.parse_args()
+    write_module(compile_manifest(args.manifest,
+                                  json.loads(args.static_map.read_text())), args.output)

@@ -1,13 +1,13 @@
 # 规范：当前启用的录制轨迹清单
 
-Status: **截至 `1114-v0.21`（`main` v17 / `account2` v20）。本文只盘点 `agent.act()` 实际可达的轨迹；编译存在但未接入的候选单独标注。**
+Status: **截至 `1114-v0.21`（`main` v17 / `account2` v20），并包含工作区尚未提交的 Dust2 中门夹 B 路线与 B 车位守包（待提交版本）。本文只盘点 `agent.act()` 实际可达的轨迹；编译存在但未接入的候选单独标注。**
 Date: 2026-11-14
 Submission: [1114-v0.21](../submissions/1114-v0.21/README.md)
 Related: [轨迹链接器](./11-14-route-linker.md) · [T 路线轮换](./11-13-t-route-rotation.md) · [录制回放卡死修复](./11-14-replay-follow-wedge.md) · [Dust2 CT 车位路线](./11-14-dust2-ct-car-routes.md) · [Mirage CT/T 用户路线](./11-14-pro-demo-walklab-pipeline.md) · [职业 demo 回防](./11-13-pro-demo-routes.md)
 
 ## 0. 结论
 
-- 五张图都有 T 进攻录制轨迹；Dust2 两条、Mirage 六条（五条用户 T + 一条 legacy），Borgo/Molo/Nevaio 各一条。
+- 五张图都有 T 进攻录制轨迹；Dust2 三条、Mirage 六条（五条用户 T + 一条 legacy），Borgo/Molo/Nevaio 各一条。
 - CT 「走位 opening + 守位 hold」用户路线只在 Dust2 与 Mirage 启用。
 - CT 回防轨迹只有 Mirage B→A 两条；Dust2 下包后仍走 A*。
 - `pro_retakes.py` 里编译了 Dust2/Mirage 的职业 demo 回防，但 `agent.act()` 没有调用点（只有 `agent.pro_retake_routes()` 定义和测试），**当前不生效**。
@@ -42,9 +42,11 @@ T 进攻：按权重选中的录制轨迹 > A*
 | --- | --- | ---: | ---: | --- |
 | `legacy` | 不限 | 2002 | 2001（到末帧） | `dust2_replay.py`（源 SHA `57473976…`） |
 | `B_site_20261113` | B | 706 | 588 | `dust2_b_replay.py`（源 SHA `26f11dc3…`） |
+| `B_mid_doors_20261114` | B | 720 | 719（`route_end`） | `dust2_user_t_routes.py`（中门夹 B，源 SHA `37c08ecd…`） |
 
-- 选 A 时只有 `legacy`；选 B 时两条参与权重轮换。
+- 选 A 时只有 `legacy`；选 B 时三条参与权重轮换。
 - `legacy` 没有真实带包截止点（cutoff 在末帧），带包者会跟完整条路线；`B_site_20261113` 在距 B 包点 ≤12 m 的第 588 帧交给 A* 下包。
+- `B_mid_doors_20261114` 最近只到距 B 包点中心 12.66 m（终点 15.84 m），因此 cutoff 取末帧、`carrier_cutoff_kind = "route_end"`：带包者跟完整条路线后由 A* 完成下包。
 
 ### 2.2 Mirage（`mirage-cs2-v54`，hash `ef93849…`）
 
@@ -84,8 +86,9 @@ T 进攻：按权重选中的录制轨迹 > A*
 | 地图 | 包点 | 名称 | 帧数 | 来源 |
 | --- | --- | --- | ---: | --- |
 | Mirage | A | `A_hold_R4_Flierax` | 129 | `mirage_user_t_routes.POSTPLANT` |
+| Dust2 | B | `B_car_hold` | 230 | `dust2_user_t_routes.POSTPLANT`，复用 CT `B_1` 守车位的 hold 帧（源 `side: defend`） |
 
-Mirage A 下包后使用该 hold；Mirage B 与其他地图没有录制守包，继续使用通用的 `post_plant_target()` spot/look 逻辑。
+Mirage A 下包后使用该 hold；Dust2 B 下包后使用与 CT B 车位相同的守位循环。其余包点没有录制守包，继续使用通用的 `post_plant_target()` spot/look 逻辑。
 
 ## 3. CT 防守轨迹（opening + hold 配对）
 
@@ -145,7 +148,7 @@ CT pair 由 `opening`（从 CT 出生点到守点）与 `hold`（守点小范围
 
 | 地图 | T 进攻 | T 守包 | CT opening/hold | CT 回防 |
 | --- | --- | --- | --- | --- |
-| Dust2 | `legacy` + `B_site_20261113` | — | `A_1` / `B_1` | —（A*） |
+| Dust2 | `legacy` + `B_site_20261113` + `B_mid_doors_20261114` | B：`B_car_hold` | `A_1` / `B_1` | —（A*） |
 | Mirage | `legacy` + 5 条用户 T | A：`A_hold_R4_Flierax` | A1–A3 / B1–B2（B3 禁用） | `B_to_A_1/2` |
 | Borgo | `legacy`（A） | — | — | — |
 | Molo | `legacy`（B） | — | — | — |
@@ -160,6 +163,7 @@ Borgo/Molo/Nevaio 的 CT 未下包阶段仍使用 `advance_holds`（Borgo A anch
 | T 单图轨迹（5 图） | 根目录 `*_replay.py` | 是 |
 | Dust2 T 第二路线 | `dust2_b_replay.py` | 是 |
 | Mirage T 用户路线 | `mirage_user_t_routes.py` | 是 |
+| Dust2 T 用户路线 + B 守包 | `dust2_user_t_routes.py` | 是（待提交） |
 | Mirage CT pair + 回防 | `mirage_user_ct_routes.py` | 是 |
 | Dust2 CT pair | `dust2_user_ct_routes.py` | 是 |
 | 职业 demo 回防（未启用） | `pro_retakes.py` | 是 |
@@ -167,7 +171,7 @@ Borgo/Molo/Nevaio 的 CT 未下包阶段仍使用 `advance_holds`（Borgo A anch
 
 ## 7. 验证状态
 
-- 本地 `python3 -m unittest discover -s tests -q`：195 通过、6 skipped（2026-11-14，v0.21）。
+- 本地 `python3 -m unittest discover -s tests -q`：202 通过、6 skipped（2026-11-14，含未提交的 Dust2 T 改动）。
 - Mirage CT pair、Mirage T 用户路线、Dust2 B 路线已进入正式提交；Dust2 CT 车位路线随 v0.21 首次提交。
 - 编译与单元测试只证明格式、配对、门控和选择逻辑；**实走碰撞、视线、卡住率与胜率提升仍需用 `agx-match-query` 回填**。
 - Dust2 CT 车位距包点中心较远（约 23–26 m），实战是否合适需要下一轮对局评估。

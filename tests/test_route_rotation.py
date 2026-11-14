@@ -55,6 +55,7 @@ class RouteRotationTest(unittest.TestCase):
 
     def test_initial_choice_keeps_the_mirage_tie_break(self):
         # Round parity still picks the same first route as before rotation.
+        # Dust2 now has three B candidates: legacy, B_site, B_mid_doors.
         obs = self._start_round(0, seat=0)
         self.assertEqual(self.player.selected_replay["name"],
                          "B_site_20261113")
@@ -63,7 +64,8 @@ class RouteRotationTest(unittest.TestCase):
         agent.init({})
         self.player = agent._player
         self._start_round(1, seat=0)
-        self.assertEqual(self.player.selected_replay["name"], "legacy")
+        self.assertEqual(self.player.selected_replay["name"],
+                         "B_mid_doors_20261114")
 
     def test_death_and_round_loss_halves_weight_and_switches(self):
         obs = self._start_round(0)
@@ -75,8 +77,9 @@ class RouteRotationTest(unittest.TestCase):
         self._start_round(1, tick=obs["match_tick"] + 3, wins=(1, 0))
         self.assertAlmostEqual(
             self.player.route_scores["B_site_20261113"], 0.5)
-        self.assertEqual(self.player.selected_replay["name"], "legacy")
-        self.assertEqual(self.player.route_last, "legacy")
+        self.assertEqual(self.player.selected_replay["name"],
+                         "B_mid_doors_20261114")
+        self.assertEqual(self.player.route_last, "B_mid_doors_20261114")
 
     def test_death_but_team_win_keeps_the_route(self):
         obs = self._start_round(0)
@@ -135,15 +138,16 @@ class RouteRotationTest(unittest.TestCase):
                          "B_site_20261113")
         die(self.player, obs)
         obs = self._start_round(1, tick=obs["match_tick"] + 3, wins=(1, 0))
-        self.assertEqual(self.player.selected_replay["name"], "legacy")
+        self.assertEqual(self.player.selected_replay["name"],
+                         "B_mid_doors_20261114")
         die(self.player, obs)
         self._start_round(2, tick=obs["match_tick"] + 3, wins=(2, 0))
         self.assertAlmostEqual(
             self.player.route_scores["B_site_20261113"], 0.5)
-        self.assertAlmostEqual(self.player.route_scores["legacy"], 0.5)
+        self.assertAlmostEqual(
+            self.player.route_scores["B_mid_doors_20261114"], 0.5)
         # Both failed: cycle to the route after the last failed one.
-        self.assertEqual(self.player.selected_replay["name"],
-                         "B_site_20261113")
+        self.assertEqual(self.player.selected_replay["name"], "legacy")
 
     def test_weight_floor_and_missing_round_wins_are_neutral(self):
         next_obs = {"round_index": 4, "round_wins": [1, 0], "team": 1,
@@ -181,7 +185,7 @@ class RouteRotationTest(unittest.TestCase):
             self.player.route_scores["B_site_20261113"], 1.0)
         self.assertIsNone(self.player.route_success)
 
-    def test_single_route_map_is_unchanged(self):
+    def test_mirage_approved_routes_are_site_scoped(self):
         mirage = json.loads(MIRAGE.read_text())["map"]
         agent.init({})
         player = agent._player
@@ -191,9 +195,13 @@ class RouteRotationTest(unittest.TestCase):
         player._sync_route_memory(o)
         options = agent.recorded_route_options(
             mirage["id"], mirage["geometry_hash"])
-        self.assertEqual([option["name"] for option in options], ["legacy"])
+        self.assertEqual(len(options), 6)
+        self.assertEqual({option["site"] for option in options[1:]},
+                         {"A", "B"})
         route = player._select_recorded_route(o, [0.0, 0.0, 0.0], "A")
-        self.assertEqual(route["name"], "legacy")
+        self.assertIn(route["name"], {"legacy", "A_palace_R4_ay0k",
+                                      "A_connector_R8_opdust",
+                                      "A_main_R6_Flierax"})
 
     def test_route_memory_resets_when_map_key_changes(self):
         obs = self._start_round(0)

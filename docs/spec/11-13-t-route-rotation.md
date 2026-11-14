@@ -1,8 +1,9 @@
 # 规范：T 方多路线 replay 与失败权重轮换
 
-Status: **已实现（2026-11-13）；本地 123/123 unittest 通过，待提交 / 新对局验证**
+Status: **已随 `1113-v0.16` 提交；v0.16 首场 `20228083` 两个席位在 R0 tick 0 fault，轮换本身尚未获得有效对局验证。`1114-v0.17` 已将首拍改为分块加载（main v13 / account2 v16，admission `passed` 并激活），待新对局同时验证 fault 与路线轮换；见 [11-14-first-tick-fault.md](./11-14-first-tick-fault.md)**
 Date: 2026-11-13
-Related specs: [11-12-pathing-routes.md](./11-12-pathing-routes.md)（录制轨迹跟随 / A* 回退）· [11-13-pro-demo-routes.md](./11-13-pro-demo-routes.md)（多条回防路线的编译方式）· [11-12-match-observability.md](./11-12-match-observability.md)（到点 / 下包指标）· [agent-interface.md](./agent-interface.md)（`me.alive` / `round_index` / `round_wins` / `bomb` / `teammates`）· [agx-match-query skill](../../.claude/skills/agx-match-query/SKILL.md)（回放取证）
+Submission: [1113-v0.16](../submissions/1113-v0.16/README.md)
+Related specs: [11-14-first-tick-fault.md](./11-14-first-tick-fault.md)（v0.16 首场 tick 0 fault）· [11-12-pathing-routes.md](./11-12-pathing-routes.md)（录制轨迹跟随 / A* 回退）· [11-13-pro-demo-routes.md](./11-13-pro-demo-routes.md)（多条回防路线的编译方式）· [11-12-match-observability.md](./11-12-match-observability.md)（到点 / 下包指标）· [agent-interface.md](./agent-interface.md)（`me.alive` / `round_index` / `round_wins` / `bomb` / `teammates`）· [agx-match-query skill](../../.claude/skills/agx-match-query/SKILL.md)（回放取证）
 
 ## 1. 需求
 
@@ -17,14 +18,14 @@ badcase：T 方每回合都走同一条录制进攻路线。如果这条路线�
 5. 某条路线成功（到达包点 / 完成下包）→ 权重恢复，并保持这条路线，直到它再次失败；
 6. 死亡但队友赢下该回合**不降权**；CT 回合、下包后死亡不参与轮换。
 
-当前只有 Dust2 配置了两条候选路线（`legacy` + `B_site_20261113`）；其他地图仍是单路线，机制对它们行为不变。以后编译进更多录制即可自动生效。
+当前 Dust2 配置了三条候选路线（`legacy` + `B_site_20261113` + `B_mid_doors_20261114`）；其他地图仍是单路线，机制对它们行为不变。以后编译进更多录制即可自动生效。
 
 ## 2. 现状
 
 | 现状 | 位置 |
 | --- | --- |
 | 每个 replay 模块导出单条 `ROUTE` / `SITE` / `CARRIER_CUTOFF` | `borgo_replay.py`、`molo_replay.py`、`nevaio_replay.py`、`dust2_replay.py`、`mirage_replay.py`、`dust2_b_replay.py` |
-| `recorded_route_options()` 组装候选列表；目前只有 Dust2 追加第二条 | `agent.py` |
+| `recorded_route_options()` 组装候选列表；目前只有 Dust2 追加第二、三条 | `agent.py` |
 | `selected_replay` 每回合选一次，回合内不换路 | `agent.py` `act()` |
 | 跨回合路线权重、死亡/成功记录 | 本次新增 |
 
@@ -36,7 +37,7 @@ badcase：T 方每回合都走同一条录制进攻路线。如果这条路线�
 
 | 字段 | 含义 |
 | --- | --- |
-| `name` | 路线唯一名，模块内稳定（如 `legacy`、`B_site_20261113`） |
+| `name` | 路线唯一名，模块内稳定（如 `legacy`、`B_site_20261113`、`B_mid_doors_20261114`） |
 | `site` | 路线目标包点，必须是 `map.sites` 的 id；`None` 表示不限制包点 |
 | `frames` | `(x, y, z, yaw, pitch, input_mask)` 帧元组 |
 | `carrier_cutoff` | 带包者距目标包点 ≤12 m 时退出轨迹、改走 A* 下包的帧下标 |
@@ -84,7 +85,7 @@ badcase：T 方每回合都走同一条录制进攻路线。如果这条路线�
 5. 首次选路（无 `route_last`）：按出生点到首帧距离排序，取 `closest + 0.5 m` 内的并列项，用 `(round_index + 1) % len(tied)` 选择，保持原有首回合行为；
 6. 没有候选 → 不启用录制轨迹，按现有 A* / attackRoutes 逻辑。
 
-各席位进程独立记忆，不要求全队同步；Dust2 两条路线都以 B 为目标或与包点兼容，当前不会因分路阻塞下包。
+各席位进程独立记忆，不要求全队同步；Dust2 三条路线中 `legacy` 不限包点，另外两条都以 B 为目标，当前不会因分路阻塞下包。
 
 ## 6. 成功 / 失败判定
 
@@ -173,14 +174,14 @@ route map=dust2-cs2-v54 seat=0 round=2 exec=legacy result=neutral weight=1.00
 - 路线上死亡 + 本队赢 → 权重不变、下回合保持原路线；
 - 成功 → 权重恢复、`route_success` 粘滞；
 - 下包时仍存活 → 成功且不因随后死亡降权；
-- 两条路线都失败 → 继续环转；
+- 所有路线都失败 → 继续环转；
 - 权重下限 0.1、`round_wins` 缺失时中立；
 - CT 回合 / 死亡不影响路线状态；
 - 单路线地图行为不变；
 - 地图 / hash 变化重置权重；
 - 日志只写 stderr。
 
-验证命令：`python -m unittest discover -s tests`（当前 123/123 通过）。
+验证命令：`python -m unittest discover -s tests`（当前 202/202 通过，6 skipped）。
 
 ### 11.2 对局回填（提交后）
 
@@ -192,7 +193,7 @@ route map=dust2-cs2-v54 seat=0 round=2 exec=legacy result=neutral weight=1.00
 
 ## 12. 后续可选扩展（不在本次范围）
 
-- **更多实际路线**：Borgo `A_long` / `A_short` / `B_tunnel` 等需要先录制并编译为多路线模块，再接入 `recorded_route_options()`；当前只有 Dust2 有两条。
+- **更多实际路线**：Borgo `A_long` / `A_short` / `B_tunnel` 等需要先录制并编译为多路线模块，再接入 `recorded_route_options()`；当前 Dust2 有三条。
 - **路线站点驱动包点**：带包者按当前路线 `site` 选择包点，非带包者向 `bomb.site` / 队友 zone 对齐；当前 v1 仍由 `choose_site()` 先决定包点再筛路线。
 - **跨比赛持久化**：通过 `init(context)` 的 `weights_dir` 保存 / 读取路线权重，实现跨场学习；当前每场从 1.0 开始。
 - **存活未到点也计失败**：超时、卡点未到点是否算路线失败，需要单独阈值。

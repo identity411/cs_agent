@@ -48,6 +48,7 @@
 - **Dust2 CT 车位路线**：[11-14-dust2-ct-car-routes.md](11-14-dust2-ct-car-routes.md) — 四段用户 Walklab 录制按「走位 opening + 守位 hold」配成 A_1/B_1 两组；opening 从 CT 出生点出发、终点与 hold 首帧 0.0 m 对齐，hold 循环守 A/B 车位；`user_ct_routes()` 按地图 ID/哈希分发，Mirage 候选不变；本批无 Dust2 回防，下包后回落 A*。
 - **v0.21 提交**：[`1114-v0.21`](../submissions/1114-v0.21/README.md) — Dust2 CT A/B 车位录制路线接入；`main` version `17`、`account2` version `20` admission 均 `passed` 并激活，entry code hash `86b46df3e37a`；本地 195/195 测试通过（6 skipped），待新对局验证。
 - **轨迹现状清单**：[11-14-active-recorded-routes.md](11-14-active-recorded-routes.md) — 盘点 `agent.act()` 当前可达的全部录制轨迹：五图 T 进攻、Mirage T 守包、Dust2/Mirage CT opening+hold、Mirage B→A 回防；标注 `pro_retakes.py` 未接入、Mirage B_3 禁用。
+- **Dust2 中门夹 B**：新增 T 录制路线 `B_mid_doors_20261114`（720 帧，路线终点 15.84 m 外于 B 包点中心，cutoff 取末帧后由 A* 下包），并把它加入 Dust2 B 点权重轮换；下包后 T 守包复用 CT `B_1` 守车位的 hold 帧（`B_car_hold`，230 帧）。本地 202/202 测试通过（6 skipped），待提交。
 
 ## 实测状态（2026-11-12）
 
@@ -105,7 +106,7 @@
 - [11-14-replay-follow-wedge.md](11-14-replay-follow-wedge.md) — badcase + 规范：T 进攻录制路线在出生点切角、倒退帧卡死 112 s、轮换复读；动作层接入 `link_to_route(first)`、偏离重接、cursor 看门狗与无进展降权。
 - [11-14-dust2-ct-car-routes.md](11-14-dust2-ct-car-routes.md) — 规范：Dust2 CT A/B 车位用户录制路线（opening + hold 配对、编译校验、运行时选择）。
 - [11-14-active-recorded-routes.md](11-14-active-recorded-routes.md) — 规范：当前启用的录制轨迹清单（五图 T 进攻、Dust2/Mirage CT 守点、Mirage B→A 回防；职业 demo 回防未启用）。
-- [11-13-t-route-rotation.md](11-13-t-route-rotation.md) — 规范：T 方多路线 replay 与失败权重轮换（路线上死亡 + 回合输降权，成功恢复并保持）；当前 Dust2 两条路线，其他地图单路线。
+- [11-13-t-route-rotation.md](11-13-t-route-rotation.md) — 规范：T 方多路线 replay 与失败权重轮换（路线上死亡 + 回合输降权，成功恢复并保持）；当前 Dust2 三条路线，其他地图单路线。
 - [11-13-ct-defensive-peeks.md](11-13-ct-defensive-peeks.md) — 规范：Mirage/Dust2 A/B CT 防守固定站位与入口轮看（v0.15）。
 
 > 完整武器 / 装备 / 投掷物数值不落盘,以官方冻结目录为准。
@@ -168,7 +169,7 @@ badcase 采用 `MM-DD-<theme>.md` 命名；新 badcase 按日期追加，不改�
 - [ ] 战斗稳定性回填：可见性闪烁期间不再移动/蹲起/换目标；出生点被队友堵住后 0.5 s 内侧移（见 [11-13-combat-stability.md](11-13-combat-stability.md)）
 - [ ] CT 防守 peek loop 的新对局验证：未下包时按站位/瞄点轮看，遇敌暂停，下包后切回回防/拆包（见 [11-13-ct-defensive-peeks.md](11-13-ct-defensive-peeks.md)）
 - [ ] Borgo/Molo/Nevaio 录制路线与 Dust2/Mirage CT 回防路线的正式对局验证（见 [11-13-pro-demo-routes.md](11-13-pro-demo-routes.md)）
-- [ ] T 方路线权重轮换的新对局验证：路线上死亡 + 回合输后换路、成功后保持、Dust2 两条路线尝试/死亡统计（见 [11-13-t-route-rotation.md](11-13-t-route-rotation.md)）
+- [ ] T 方路线权重轮换的新对局验证：路线上死亡 + 回合输后换路、成功后保持、Dust2 多条路线尝试/死亡统计（见 [11-13-t-route-rotation.md](11-13-t-route-rotation.md)）
 - [ ] 轨迹链接器的新对局验证：CT 守点 → 回防入口命中、链接耗时、失败回退与回防到位率（见 [11-14-route-linker.md](11-14-route-linker.md)）
 - [ ] T 进攻入口与跟随恢复验证：入口 A* 落到 `frames[0]`、偏离重接、cursor 看门狗、无进展换路（见 [11-14-replay-follow-wedge.md](11-14-replay-follow-wedge.md)）
 

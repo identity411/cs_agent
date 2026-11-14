@@ -6,6 +6,7 @@ import sys
 
 import advance_holds
 import dust2_user_ct_routes
+import dust2_user_t_routes
 import map_patches
 import pro_retakes
 import mirage_user_ct_routes
@@ -28,6 +29,9 @@ def user_ct_routes(map_id, geometry_hash):
 
 
 def user_t_routes(map_id, geometry_hash):
+    if (map_id == dust2_user_t_routes.MAP_ID
+            and geometry_hash == dust2_user_t_routes.MAP_HASH):
+        return dust2_user_t_routes.ATTACKS, dust2_user_t_routes.POSTPLANT
     if (map_id == mirage_user_t_routes.MAP_ID
             and geometry_hash == mirage_user_t_routes.MAP_HASH):
         return mirage_user_t_routes.ATTACKS, mirage_user_t_routes.POSTPLANT
@@ -77,6 +81,12 @@ def recorded_route_options(map_id, geometry_hash):
         if geometry_hash == MAP_HASH:
             options.append({"name": "B_site_20261113", "frames": ROUTE,
                             "site": SITE, "carrier_cutoff": CARRIER_CUTOFF})
+        attacks, _ = user_t_routes(map_id, geometry_hash)
+        options.extend({"name": route["name"], "frames": route["frames"],
+                        "site": route["site"],
+                        "carrier_cutoff": route["carrier_cutoff"],
+                        "terminal_hold": route["terminal_hold"]}
+                       for route in attacks)
     elif map_id == "mirage-cs2-v54":
         attacks, _ = user_t_routes(map_id, geometry_hash)
         options.extend({"name": route["name"], "frames": route["frames"],
