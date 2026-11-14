@@ -5,6 +5,7 @@ import math
 import sys
 
 import advance_holds
+import dust2_user_ct_routes
 import map_patches
 import pro_retakes
 import mirage_user_ct_routes
@@ -17,6 +18,9 @@ def pro_retake_routes(map_id, geometry_hash):
 
 
 def user_ct_routes(map_id, geometry_hash):
+    if (map_id == dust2_user_ct_routes.MAP_ID
+            and geometry_hash == dust2_user_ct_routes.MAP_HASH):
+        return dust2_user_ct_routes.PAIRS, dust2_user_ct_routes.RETAKES
     if (map_id == mirage_user_ct_routes.MAP_ID
             and geometry_hash == mirage_user_ct_routes.MAP_HASH):
         return mirage_user_ct_routes.PAIRS, mirage_user_ct_routes.RETAKES

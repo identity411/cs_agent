@@ -45,6 +45,8 @@
 - **Mirage CT B_3 禁用**：`MIRAGE_DISABLED_CT_PAIRS = frozenset({"B_3"})`，B 点 two-box 攀爬在平台碰撞中不可通过；`choose_ct_recorded()` 不再分配 B_3，B 守点回退 B_1/B_2。随 `1114-v0.19` 提交。
 - **录制回放卡死 badcase**：[11-14-replay-follow-wedge.md](11-14-replay-follow-wedge.md) — `439a8cec`（Mirage，v0.18）seat 5 在 R1/R2/R4 同一坐标 `(89.69,133.15)` 静止约 112 s、0 发射、0 死亡；根因是 T 进攻从出生点北侧中途切入 `A_palace` 录线、倒退帧（`move_forward≈-0.99`）被 `avoid_replay_block` 误判为瞄准停顿，且“活着无进展”轮换记为 neutral。修复：动作层接入 `link_to_route(first, 0.6 m)`、偏离重接（0.8 m 触发 / 0.4 m 停止）、cursor 2.5 s 看门狗与无进展降权；`LinkState` 通用化。
 - **v0.20 提交**：[`1114-v0.20`](../submissions/1114-v0.20/README.md) — T 进攻录制路线入口/跟随卡死修复（P0–P4）；`main` version `16`、`account2` version `19` admission 均 `passed` 并激活，entry code hash `741a35ac2c2d`；本地 187/187 测试通过（6 skipped），待新对局验证。
+- **Dust2 CT 车位路线**：[11-14-dust2-ct-car-routes.md](11-14-dust2-ct-car-routes.md) — 四段用户 Walklab 录制按「走位 opening + 守位 hold」配成 A_1/B_1 两组；opening 从 CT 出生点出发、终点与 hold 首帧 0.0 m 对齐，hold 循环守 A/B 车位；`user_ct_routes()` 按地图 ID/哈希分发，Mirage 候选不变；本批无 Dust2 回防，下包后回落 A*。
+- **v0.21 提交**：[`1114-v0.21`](../submissions/1114-v0.21/README.md) — Dust2 CT A/B 车位录制路线接入；`main` version `17`、`account2` version `20` admission 均 `passed` 并激活，entry code hash `86b46df3e37a`；本地 195/195 测试通过（6 skipped），待新对局验证。
 
 ## 实测状态（2026-11-12）
 
@@ -146,6 +148,7 @@ badcase 采用 `MM-DD-<theme>.md` 命名；新 badcase 按日期追加，不改�
 | `1114-v0.18` | [1114-v0.18/README.md](../submissions/1114-v0.18/README.md) | [11-14-recoil-bomb-economy.md](11-14-recoil-bomb-economy.md), [11-14-pro-demo-walklab-pipeline.md](11-14-pro-demo-walklab-pipeline.md), [11-13-t-route-rotation.md](11-13-t-route-rotation.md), [11-13-pro-demo-routes.md](11-13-pro-demo-routes.md) |
 | `1114-v0.19` | [1114-v0.19/README.md](../submissions/1114-v0.19/README.md) | [11-14-route-linker.md](11-14-route-linker.md), [11-14-pro-demo-walklab-pipeline.md](11-14-pro-demo-walklab-pipeline.md) |
 | `1114-v0.20` | [1114-v0.20/README.md](../submissions/1114-v0.20/README.md) | [11-14-replay-follow-wedge.md](11-14-replay-follow-wedge.md), [11-14-route-linker.md](11-14-route-linker.md), [11-13-t-route-rotation.md](11-13-t-route-rotation.md) |
+| `1114-v0.21` | [1114-v0.21/README.md](../submissions/1114-v0.21/README.md) | [11-14-dust2-ct-car-routes.md](11-14-dust2-ct-car-routes.md) |
 
 ## 待补 / 待核实
 
