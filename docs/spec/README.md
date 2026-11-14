@@ -51,6 +51,7 @@
 - **Dust2 中门夹 B**：新增 T 录制路线 `B_mid_doors_20261114`（720 帧，路线终点 15.84 m 外于 B 包点中心，cutoff 取末帧后由 A* 下包），并把它加入 Dust2 B 点权重轮换；下包后 T 守包复用 CT `B_1` 守车位的 hold 帧（`B_car_hold`，230 帧）。随 `1114-v0.22` 首次进入提交快照。
 - **Nevaio 用户路线**：[11-14-nevaio-user-routes.md](11-14-nevaio-user-routes.md) — 12 条用户 Walklab 录制编译为 T A/B × mid/long 四条进攻、CT A/B × mid/long 四条开局与 A↔B 双向各两条回防；CT 开局没有独立守点录制，按用户选择使用末帧静止守点（`holdMode = "final_pose"`）；Nevaio 的 `recorded_site()` 因用户候选跨 A/B 而不再固定为 A。随 `1114-v0.22` 提交并激活。
 - **v0.22 提交**：[`1114-v0.22`](../submissions/1114-v0.22/README.md) — Nevaio 用户 T/CT 路线、Dust2 中门夹 B 首次进入快照，以及静止尾段、掉包 `world`、恢复接路超时三项本地修复；`main` version `18`、`account2` version `21` admission 均 `passed` 并激活，entry code hash `b2f874a6d0df`；本地 219/219 测试通过（6 skipped），待新对局验证。
+- **v0.23 提交**：[`1114-v0.23`](../submissions/1114-v0.23/README.md) — 轨迹链接器 review 修订：12 s 总接路预算、1.0 m 入口高度门控、`first` 不再静默跳过起点、`window` 按路线长度取前 10%、入口排序计入失败/反向边惩罚、回防末帧 A* 交接与已进入后超时豁免；只有 `agent.py` 相对 v0.22 变化。`main` version `19`、`account2` version `22` admission 均 `passed` 并激活，entry code hash `03f89d9cd787`；本地 233/233 测试通过（6 skipped），待新对局验证。
 
 ## 实测状态（2026-11-12）
 

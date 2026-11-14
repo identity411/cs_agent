@@ -1,6 +1,6 @@
 # 规范：当前启用的录制轨迹清单
 
-Status: **截至 `1114-v0.22`（`main` v18 / `account2` v21）：包含 Dust2 中门夹 B 路线与 B 车位守包、Nevaio 用户录制 T/CT 路线。本文只盘点 `agent.act()` 实际可达的轨迹；编译存在但未接入的候选单独标注。**
+Status: **截至 `1114-v0.23`（`main` v19 / `account2` v22）：包含 Dust2 中门夹 B 路线与 B 车位守包、Nevaio 用户录制 T/CT 路线，以及链接器总预算/入口高度门控修订。本文只盘点 `agent.act()` 实际可达的轨迹；编译存在但未接入的候选单独标注。**
 Date: 2026-11-14
 Submission: [1114-v0.21](../submissions/1114-v0.21/README.md)
 Related: [轨迹链接器](./11-14-route-linker.md) · [T 路线轮换](./11-13-t-route-rotation.md) · [录制回放卡死修复](./11-14-replay-follow-wedge.md) · [Dust2 CT 车位路线](./11-14-dust2-ct-car-routes.md) · [Mirage CT/T 用户路线](./11-14-pro-demo-walklab-pipeline.md) · [Nevaio 用户路线](./11-14-nevaio-user-routes.md) · [职业 demo 回防](./11-13-pro-demo-routes.md)
@@ -90,9 +90,10 @@ T 进攻：按权重选中的录制轨迹 > A*
 - **站点过滤**：候选 `site ∈ (None, 当前选点)`；`None` 匹配任意包点。
 - **权重轮换**（`ROUTE_WEIGHT_*`）：成功 → 权重 +0.5（上限 1.0）并保持；在路线上死亡且本队该回合未得分 → ×0.5；整回合存活但未完成且被判定停滞 → ×0.5。最低 0.1。
 - **平票时的确定性**：保留上一回合仍在跑的路线；失败后从候选环里的下一条开始；无历史时按距离 + `(round_index + 1) % n` 打破平局。
-- **入口**：`ATTACK_ENTRY_POLICY = "first"`、`ATTACK_ENTRY_RADIUS = 0.6 m`。先用 A* 走到 `frames[0]`，不允许就近切中段；起点不可达时才退化为最近可达帧。
+- **入口**：`ATTACK_ENTRY_POLICY = "first"`、`ATTACK_ENTRY_RADIUS = 0.6 m`。先用 A* 走到 `frames[0]`，不允许就近切中段；起点不可达时 `link_unreachable` 放弃该录制路线并回退 A*，不再静默降级为最近帧。入口还要求高度差 ≤1.0 m，小坡差放行、跨层拒绝。
 - **带包**：轨迹在 `carrier_cutoff + 1` 帧处截断；实时位置到目标包点 ≤12 m 时提前结束回放，交 A* 下包。
 - **偏离/卡住**：偏离当前车道 >0.8 m 用 A* 重接该帧；高移动意图持续 2.5 s 无 cursor 进展 → 放弃回放并回退 A*；遇敌时暂停链接超时与 cursor 看门狗。
+- **接路预算**：单个候选入口 8 s；所有候选合计 12 s（`LINK_TOTAL_TIMEOUT_TICKS = 720`），重试不重置，战斗暂停只暂停计时。
 
 ### 2.6 T 守包轨迹
 
@@ -159,7 +160,7 @@ Nevaio 原始录制只有开走段；`hold` 为 opening 最后一帧，`holdMode
 - `choose_retake()` 只在已下包、目标包点为 A/B 时触发；方向由炸弹包点与对侧 origin 推出。Mirage 只有 `B_to_A`，Nevaio 两个方向都有录制候选。
 - 选择距离实时位置最近的候选；若实时位置在对侧 origin 半径内，或距任一候选入口 ≤20 m，则开始接路。
 - 接路使用 `entry_policy="earliest"`：按 A* 路径代价最多比较 4 个间隔 ≥24 帧的候选，允许从轨迹中段进入。
-- 8 s 接路超时会重试候选帧，最终失败则回退 A* 到炸弹；跟随结束后同样 A* 奔向炸弹。
+- 单个入口 8 s 接路超时会重试候选帧，所有候选合计 12 s 预算用尽则回退 A* 到炸弹；已进入轨迹后的跟随时长不受接路超时限制，到末帧后保留已有 A* 进度奔向炸弹。
 
 ### 4.1 未启用的职业 demo 回防
 
@@ -201,7 +202,7 @@ Borgo/Molo 的 CT 未下包阶段仍使用 `advance_holds`（Borgo A anchor、Mo
 
 ## 7. 验证状态
 
-- 本地 `python3 -m unittest discover -s tests -q`：219 通过、6 skipped（2026-11-14）。
+- 本地 `python3 -m unittest discover -s tests -q`：233 通过、6 skipped（2026-11-14，含 `1114-v0.23` 链接器修订）。
 - Mirage CT pair、Mirage T 用户路线、Dust2 B 路线已进入正式提交；Dust2 CT 车位路线随 v0.21 首次提交；Dust2 中门夹 B 与 Nevaio 用户路线随 v0.22 首次提交。
 - Nevaio 用户路线随 `1114-v0.22` 提交并激活（main v18 / account2 v21），尚未实战验证。
 - 编译与单元测试只证明格式、配对、门控和选择逻辑；**实走碰撞、视线、卡住率与胜率提升仍需用 `agx-match-query` 回填**。

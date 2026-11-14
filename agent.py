@@ -227,7 +227,9 @@ RETAKE_ORIGIN_PAD = 18.0        # CT must still be defending the other site
 RETAKE_JOIN_DISTANCE = 6.0     # switch from A* link to recorded following
 RETAKE_ENTRY_JOIN_RADIUS = 20.0  # join an entry even after leaving origin site
 RETAKE_DECISION_TICKS = 180    # ~3 s after plant to keep re-evaluating
-RETAKE_LINK_TIMEOUT_TICKS = 480  # ~8 s to reach the route entry
+RETAKE_LINK_TIMEOUT_TICKS = 480  # ~8 s to reach one route entry
+LINK_TOTAL_TIMEOUT_TICKS = 720  # ~12 s across all entry candidates
+LINK_ENTRY_HEIGHT_TOLERANCE = 1.0  # small ramp mismatch, never another floor
 RETAKE_SAME_SITE_PAD = 2.0     # already at the planted site: no cross-site run
 RETAKE_ENTRY_STRIDE = 24       # frame spacing between mid-route candidates
 RETAKE_ENTRY_CANDIDATES = 4    # A* entry checks per link selection
@@ -353,7 +355,7 @@ class LinkState:
 
     __slots__ = ("segment", "route_name", "frames", "entry_frame",
                  "candidates", "choice", "started_tick", "entered",
-                 "fail_logged", "policy")
+                 "fail_logged", "policy", "active_ticks", "budget_tick")
 
     def __init__(self):
         self.reset()
@@ -369,6 +371,8 @@ class LinkState:
         self.entered = False
         self.fail_logged = False
         self.policy = "earliest"
+        self.active_ticks = 0
+        self.budget_tick = None
 
 
 class Player:
@@ -1082,14 +1086,17 @@ class Player:
         return picked
 
     @staticmethod
-    def _entry_pool(pos, frames, policy):
+    def _entry_pool(pos, frames, policy, window_fraction=0.1):
         """Entry frames admitted by a segment's policy."""
         if not frames:
             return []
         if policy == "first":
             return [0]
         if policy == "window":
-            return Player._entry_candidates(pos, frames[:48])
+            if not 0 < window_fraction <= 1:
+                raise ValueError("window_fraction must be in (0, 1]")
+            count = max(1, math.ceil(len(frames) * window_fraction))
+            return Player._entry_candidates(pos, frames[:count])
         return Player._entry_candidates(pos, frames)
 
     def _rank_entries(self, pos, frames, pool):
@@ -1099,14 +1106,18 @@ class Player:
             if not path or not node_ids or node_ids[0] is None:
                 continue
             cost = distance(pos, path[0])
-            cost += sum(distance(path[step], path[step + 1])
-                        for step in range(len(path) - 1))
+            for step in range(len(path) - 1):
+                edge = (node_ids[step], node_ids[step + 1])
+                penalty = self.edge_penalty.get(edge, 0.0)
+                if edge in self.reverse_edges:
+                    penalty += REVERSE_EDGE_PENALTY
+                cost += distance(path[step], path[step + 1]) * (1 + penalty)
             ranked.append((cost, index))
         ranked.sort(key=lambda item: (item[0], item[1]))
         return ranked
 
     def choose_route_entry(self, o, pos, frames, policy="earliest",
-                           route_name=None, segment=None):
+                           route_name=None, segment=None, window_fraction=0.1):
         """Pick an entry frame; ``first`` forces the recorded start.
 
         ``earliest`` keeps the CT retake behavior: a closer later frame beats
@@ -1125,19 +1136,15 @@ class Player:
         if segment is not None:
             self.link.segment = segment
         ranked = self._rank_entries(
-            pos, frames, self._entry_pool(pos, frames, policy))
-        if not ranked and policy != "earliest":
-            # Recorded start unreachable: take the nearest reachable frame
-            # instead of losing the route entirely.
-            self.link.policy = f"{policy}-fallback"
-            ranked = self._rank_entries(
-                pos, frames, self._entry_pool(pos, frames, "earliest"))
+            pos, frames, self._entry_pool(pos, frames, policy, window_fraction))
         if not ranked:
             return False
         self.link.candidates = ranked
         self.link.choice = 0
         self.link.entry_frame = ranked[0][1]
         self.link.started_tick = o.get("match_tick") or 0
+        self.link.budget_tick = self.link.started_tick
+        self.link.active_ticks = 0
         self.link.entered = False
         self.link.fail_logged = False
         return True
@@ -1164,8 +1171,29 @@ class Player:
                        entry_index=entry_index,
                        entry_count=len(frames))
 
+    def _link_timed_out(self, tick):
+        """Account active navigation time once per observation, across retries."""
+        if self.link.entered:
+            return False
+        if self.link.budget_tick is not None:
+            self.link.active_ticks += max(0, tick - self.link.budget_tick)
+        self.link.budget_tick = tick
+        return (self.link.active_ticks >= LINK_TOTAL_TIMEOUT_TICKS
+                or (self.link.started_tick is not None
+                    and tick - self.link.started_tick >= RETAKE_LINK_TIMEOUT_TICKS))
+
+    def _pause_link_watchdog(self, tick):
+        if not self.link.entered and self.link.entry_frame is not None:
+            if (self.link.started_tick is not None
+                    and self.link.budget_tick is not None):
+                self.link.started_tick += max(0, tick - self.link.budget_tick)
+            self.link.budget_tick = tick
+
     def _retry_link_entry(self, o, pos, frames, tick):
         if self.link.entered:
+            return False
+        self._link_timed_out(tick)
+        if self.link.active_ticks >= LINK_TOTAL_TIMEOUT_TICKS:
             return False
         choice = self.link.choice + 1
         if choice >= len(self.link.candidates):
@@ -1191,9 +1219,8 @@ class Player:
     def follow_attack_link(self, o, pos, route, replay_info, action):
         """A* onto the recorded lane before following it.
 
-        Returns an action while linking; ``None`` means the follower owns
-        movement (entered, or no reachable entry so the legacy nearest-frame
-        follower is kept rather than freezing the seat).
+        Returns an action while linking; None means entered or explicitly
+        abandoned, in which case the caller uses its objective fallback.
         """
         name = replay_info.get("name")
         # `route` may be a fresh carrier-cutoff slice each tick; identity is
@@ -1210,20 +1237,19 @@ class Player:
             if not self.choose_route_entry(
                     o, pos, route, policy=ATTACK_ENTRY_POLICY,
                     route_name=name, segment="attack"):
-                self.link.entered = True
+                if self.map_ready:
+                    self._abandon_recorded_route(o, pos, "link_unreachable")
                 return None
+        if self.link.entered:
+            return None
         entry_index = self.link.entry_frame
         entry = route[entry_index]
-        # link_to_route() compares plan distances; a ramp's z difference
-        # must not keep the 3D check from ever entering (dust2 R13 slope).
-        if distance(pos[:2], entry[:2]) <= ATTACK_ENTRY_RADIUS:
+        if self._at_route_entry(pos, entry, ATTACK_ENTRY_RADIUS):
             self._note_link_entered(o, pos, route, entry_index)
             self.replay_cursor = entry_index
             self._reset_replay_progress(entry_index)
             return None
-        if (self.link.started_tick is not None
-                and tick - self.link.started_tick
-                >= RETAKE_LINK_TIMEOUT_TICKS):
+        if self._link_timed_out(tick):
             if not self._retry_link_entry(o, pos, route, tick):
                 self._abandon_recorded_route(o, pos, "link_timeout")
                 return None
@@ -1244,7 +1270,7 @@ class Player:
         """Combat must not age the attack link timeout or cursor window."""
         if (self.link.segment == "attack" and not self.link.entered
                 and self.link.entry_frame is not None):
-            self.link.started_tick = tick
+            self._pause_link_watchdog(tick)
         self.replay_progress_tick = tick
         self.replay_progress_best = self.replay_cursor
 
@@ -1256,7 +1282,13 @@ class Player:
         self.link.route_name = replay_info.get("name")
         self.link.entry_frame = index
         self.link.started_tick = o.get("match_tick") or 0
+        self.link.budget_tick = self.link.started_tick
         self._reset_replay_progress(index)
+
+    @staticmethod
+    def _at_route_entry(pos, entry, radius):
+        return (distance(pos[:2], entry[:2]) <= radius
+                and abs(pos[2] - entry[2]) <= LINK_ENTRY_HEIGHT_TOLERANCE)
 
     def link_to_route(self, o, pos, action, frames, entry_index=0,
                       entry_radius=RETAKE_JOIN_DISTANCE, via_key=None):
@@ -1265,7 +1297,7 @@ class Player:
             return None
         index = max(0, min(entry_index, len(frames) - 1))
         entry = frames[index]
-        if distance(pos[:2], entry[:2]) <= entry_radius:
+        if self._at_route_entry(pos, entry, entry_radius):
             return None
         key = via_key or ("link", self.map_id, index,
                           o.get("round_index"))
@@ -1276,6 +1308,10 @@ class Player:
         frames = self.retake_route
         if self.retake_done or not frames:
             return None
+        if self.link.entered and self.retake_cursor >= len(frames) - 1:
+            return self.move(
+                o, list(bomb_position), action, sprint=True,
+                via_key=("retake_bomb", o.get("round_index")))
         tick = o.get("match_tick") or 0
         if (self.retake_anchor_pos is None
                 or distance(pos[:2], self.retake_anchor_pos) > 0.3):
@@ -1306,42 +1342,29 @@ class Player:
                 return None
         entry_index = self.retake_entry_frame
         entry = frames[entry_index]
-        if self.retake_link_started is None:
-            self.retake_link_started = tick
-        if (self.retake_link_started is not None
-                and tick - self.retake_link_started >=
-                RETAKE_LINK_TIMEOUT_TICKS):
-            if not self._retry_link_entry(o, pos, frames, tick):
-                self.retake_done = True
-                if not self.retake_fail_logged:
-                    self.retake_fail_logged = True
-                    self._link_log(o, "timeout", pos=pos, entry=entry,
-                                   entry_index=entry_index,
-                                   entry_count=len(frames))
-                return None
-            entry_index = self.retake_entry_frame
-            entry = frames[entry_index]
-        if distance(pos[:2], entry[:2]) > RETAKE_JOIN_DISTANCE:
-            return self.link_to_route(
+        if not self.link.entered:
+            if self.retake_link_started is None:
+                self.retake_link_started = tick
+                self.link.budget_tick = tick
+            if self._link_timed_out(tick):
+                if not self._retry_link_entry(o, pos, frames, tick):
+                    self.retake_done = True
+                    if not self.retake_fail_logged:
+                        self.retake_fail_logged = True
+                        self._link_log(o, "timeout", pos=pos, entry=entry,
+                                       entry_index=entry_index,
+                                       entry_count=len(frames))
+                    return None
+                entry_index = self.retake_entry_frame
+                entry = frames[entry_index]
+            link_action = self.link_to_route(
                 o, pos, action, frames, entry_index, RETAKE_JOIN_DISTANCE,
                 via_key=("retake_entry", self.retake_route_name,
                          entry_index, o.get("round_index")))
-        if not self.retake_entry_logged:
-            self.retake_entry_logged = True
-            self.retake_link_started = None
+            if link_action is not None:
+                return link_action
+            self._note_link_entered(o, pos, frames, entry_index)
             self.retake_cursor = entry_index
-            # Drop any A* state from the link; the follower owns movement now.
-            self.path, self.path_ids = [], []
-            self.goal = None
-            self.via_key = None
-            self._link_log(o, "entered", pos=pos, entry=entry,
-                           entry_index=entry_index, entry_count=len(frames))
-        if self.goal is not None:
-            # The follower does not use the link's A* goal; keeping it would
-            # also confuse the turning-vs-blocked check above.
-            self.path, self.path_ids = [], []
-            self.goal = None
-            self.via_key = None
         cursor, steering = follow_trajectory(
             frames, self.retake_cursor, pos, o["me"]["yaw"], o["me"]["pitch"])
         self.retake_cursor = cursor
@@ -1357,6 +1380,12 @@ class Player:
                 o, pos, action, frames, cursor, RETAKE_JOIN_DISTANCE,
                 via_key=("retake_rejoin", self.retake_route_name,
                          o.get("round_index")))
+        if self.goal is not None:
+            # The follower does not use the link's A* goal; keeping it would
+            # also confuse the turning-vs-blocked check above.
+            self.path, self.path_ids = [], []
+            self.goal = None
+            self.via_key = None
         steering["sprint"] = True
         steering["walk"] = False
         return dict(action, **steering)
@@ -2811,8 +2840,7 @@ class Player:
             if replay_active or retake_active:
                 if retake_active:
                     self.retake_anchor_pos = None
-                    if self.retake_link_started is not None:
-                        self.retake_link_started = tick
+                    self._pause_link_watchdog(tick)
                 action = self.combat(o, action, gun)
                 if action.get("fire"):
                     self.combat_last_fire_tick = tick
@@ -2846,8 +2874,7 @@ class Player:
                 self._pause_attack_watchdogs(tick)
             if retake_active:
                 self.retake_anchor_pos = None
-                if self.retake_link_started is not None:
-                    self.retake_link_started = tick
+                self._pause_link_watchdog(tick)
             return self.combat_wait(o, action, self.combat_last_target)
         else:
             self._reset_combat_state()

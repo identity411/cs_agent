@@ -1,6 +1,6 @@
 # 规范：轨迹段与通用链接器
 
-Status: **P1 已随 `1114-v0.19` 提交：main v15 / account2 v18，admission 均 `passed` 并激活，entry code hash `55bff79bffe0`；本地 177/177 测试通过（6 skipped）；实战效果待回填。**
+Status: **本轮 review 修订随 `1114-v0.23` 提交并激活：main v19 / account2 v22，admission 均 `passed`，entry code hash `03f89d9cd787`；本地 233 项测试通过（6 skipped），实战效果待回填。历史 P1 已随 `1114-v0.19` 提交：main v15 / account2 v18，entry code hash `55bff79bffe0`。**
 Date: 2026-11-14
 Submission: [1114-v0.19](../submissions/1114-v0.19/README.md)
 Related: [11-13-pro-demo-routes.md](./11-13-pro-demo-routes.md)（对侧下包回防）· [11-14-pro-demo-walklab-pipeline.md](./11-14-pro-demo-walklab-pipeline.md)（两段式组合）· [11-12-pathing-routes.md](./11-12-pathing-routes.md)（A* / 卡住恢复）· [11-13-combat-stability.md](./11-13-combat-stability.md)（录制路线遇敌暂停）· [11-14-replay-follow-wedge.md](./11-14-replay-follow-wedge.md)（把链接器扩展到 T 进攻入口与跟随偏离重接；本文的 P1 状态不变）
@@ -30,7 +30,8 @@ Route = {
   name, side, purpose, site,      # 可选元数据，只用于选择，不参与链接算法
   frames: [(x, y, z, yaw, pitch, key_mask), ...],
   loop: bool,                     # hold 循环：末帧接回首帧，不触发跨段链接
-  entry_policy: first | earliest | window
+  entry_policy: first | earliest | window,
+  window_fraction: 0.1,          # window 默认前 10%，向上取整至少一帧
 }
 ```
 
@@ -69,11 +70,11 @@ Link(A → B) = 从当前实时位置（通常是 A 的终点）
 2. 候选帧不全量扫描。P1 的实现：
    - 按实时位置到帧的平面距离排序，取最多 4 个彼此间隔 ≥24 帧的候选；
    - 再补上 `frames[0]`，保证“回到起点”始终是候选；
-   - 每个候选跑一次 `_astar()`，取路径长度最小者；代价相同取帧下标更小的；
+   - 每个候选跑一次 `_astar()`，计入路径长度、失败边惩罚及反向边惩罚，取总代价最小者；代价相同取帧下标更小的；
    - 只在链接开始时计算一次，失败重试时用已排序的候选列表。
-3. 如果允许 `earliest`，agent 可能从 B 的中段进入，从而跳过 B 的开头。当前 CT 回防默认使用这条策略（每次链接最多跳过 24 帧以上的中段），因为目标是“尽快进入轨迹”。
-4. 如果当前已经在 B 的 `entry_radius`（`RETAKE_JOIN_DISTANCE = 6 m`）内：
-   - 立即设置 cursor 到选定入口帧并开始跟随，不再寻路。
+3. 如果允许 `earliest`，agent 可能从 B 的中段进入，从而跳过 B 的开头。当前 CT 回防默认使用这条策略（24 帧是候选间隔，不是允许跳过的最大帧数），因为目标是“尽快进入轨迹”。
+4. 如果当前处于 LINKING，且已在 B 的 `entry_radius`（`RETAKE_JOIN_DISTANCE = 6 m`）内：
+   - 同时要求高度差 ≤1.0 m；满足后立即设置 cursor 到选定入口帧并开始跟随，不再寻路。
 5. P1 参数：
 
 | 常量 | 值 | 含义 |
@@ -83,7 +84,9 @@ Link(A → B) = 从当前实时位置（通常是 A 的终点）
 | `RETAKE_DECISION_TICKS` | 180（3 s） | 下包后持续重选回防路线的时间窗 |
 | `RETAKE_LINK_TIMEOUT_TICKS` | 480（8 s） | 单个入口接路超时 |
 | `RETAKE_ENTRY_STRIDE` | 24 帧 | 候选入口之间的最小间隔 |
-| `RETAKE_ENTRY_CANDIDATES` | 4 | 每次接路最多比较的候选帧数 |
+| `RETAKE_ENTRY_CANDIDATES` | 4 + 起点 | 最多 5 个候选；起点已包含时不重复 |
+| `LINK_TOTAL_TIMEOUT_TICKS` | 720（12 s） | 所有候选共用的接路预算，重试不重置 |
+| `LINK_ENTRY_HEIGHT_TOLERANCE` | 1.0 m | 入口高度差容差，允许小坡差、拒绝跨层 |
 
 ## 3. 链接器
 
@@ -112,7 +115,7 @@ retake_fail_logged       是否已经记录最终失败
 ### 3.2 每拍流程
 
 ```text
-if 距目标入口帧 <= entry_radius:
+if 处于 LINKING 且 XY 距目标入口帧 <= entry_radius 且高度差 <= 1.0 m:
     设置 target_route.cursor = entry_frame
     退出链接，开始 follow_trajectory(target_route)
 else:
@@ -143,14 +146,14 @@ else:
 ### 3.4 失败与回退
 
 ```text
-入口不可达 / 卡住 / 超时
-  → 尝试下一个候选入口帧（最多 4 个候选）
+入口不可达 / 卡住 / 单候选超时
+  → 总接路预算未用尽时尝试下一个合法候选（最多 5 个，含起点）
   → 仍不可达：A* 到当前 objective（炸弹 / 包点 / 拆包位）
   → 记录 timeout / unreachable / blocked，并写明原因
 ```
 
-- 卡住阈值沿用 `REPLAY_BLOCK_TICKS = 20`；一次链接最多重试 3 个备选入口帧，避免每拍全量 A*。
-- 链接超时 `RETAKE_LINK_TIMEOUT_TICKS = 480`（8 s）后放弃当前入口；所有候选都失败则放弃该轨迹，直接 A* 到 objective。
+- 卡住阈值沿用 `REPLAY_BLOCK_TICKS = 20`；一次链接最多重试 4 个备选入口帧（含补充起点），避免每拍全量 A*。
+- 链接超时 `RETAKE_LINK_TIMEOUT_TICKS = 480`（8 s）后放弃当前入口；所有候选都失败或累计接路达到 12 s 则放弃该轨迹，直接 A* 到 objective。
 - 下包后的 3 s 选路窗口内仍可重新选择轨迹；一旦选定轨迹并开始接路，只在候选入口之间重试，不再换轨迹。
 - 原地转向不计为卡住：`_retake_turning()` 在光标目标仍在身后时重置卡住计时；真正无位移才进入重试。
 
@@ -259,3 +262,39 @@ Mirage CT 守点 → B→A 回防的实测缺口（正是链接器要覆盖的�
 - 不要求轨迹首尾闭环（loop 除外）。
 - 不解决“轨迹内部被卡住”的全部恢复策略；沿用现有 `REPLAY_BLOCK_TICKS` / A* 回退。
 - 不把动作点、lane、approach 纳入本版核心；如果后续需要，可以作为轨迹元数据叠加，不改变链接器语义。
+
+
+## 9. 2026-11-14 review 修订：阶段隔离与有界接路
+
+本节约束优先于上文历史 P1 实现记录；当前只升级 CT retake 与 T attack 共用接路状态，CT opening/hold 和 T postplant 暂保留原调用链，不宣称已全部统一。
+
+### 9.1 状态与所有权
+
+`SELECT_ENTRY → LINKING → FOLLOWING → objective / DONE`；选路不可达、候选耗尽或总预算耗尽进入 FAILED，并交给现有 objective 回退。沿用 `LinkState.entry_frame` / `entered` / `fail_logged` 与调用方 done 标记表示阶段，不增加第二套可相互矛盾的状态字段。
+
+- SELECT_ENTRY：按策略计算候选和排序，一次完成。
+- LINKING：唯一允许检查旧入口距离、单入口 8 s 超时和候选重试的阶段。所有候选共用累计 12 s 导航预算；战斗暂停预算且保留暂停前已消耗的时间，重试只重置单入口计时。
+- FOLLOWING：进入只初始化一次 cursor 并清空链接 A* 状态；不再检查旧入口，不重新启动链接计时。正常跟随超过 8 s 不能因此放弃。
+- FOLLOWING 偏离时向当前 cursor 接路，不能退回最初入口；CT 继续使用自身无位移看门狗，T 继续使用现有进度看门狗。
+- retake 到末帧后直接 A* 到炸弹；之后每拍继续此目标，不回头接轨迹入口，也不每拍清空 A* 路径或套用录制轨迹无位移看门狗；后续导航由 move 自身处理。
+- `link_to_route()` 仍为底层导航函数（`None` 表示到达）；到达判定集中为 XY 半径 + 高度差 ≤1.0 m，T/CT 调用方不得另写仅 XY 的捷径。
+
+### 9.2 策略与代价
+
+- `first` 严格只含 frame 0。不可达必须显式失败，不默默切为 `first-fallback`。T 放弃录制路线并使用既有通用目标导航。
+- `window` 默认前 10%，允许 `window_fraction` 指定 (0, 1]；使用 ceil，至少一帧。不可达也不越过窗口。
+- `earliest` 保留最多四个分散候选 + 起点的有限采样；这是近似最优，并非全轨迹全局最优。
+- 排序与 A* 边成本一致：几何长度 × (1 + 失败边惩罚 + 反向边惩罚)，额外计入起终点接入距离。防止反复选中已知撞墙的低几何长度入口。
+
+### 9.3 回归验收
+
+- 真 Mirage B→A 进入后前进超过 6 m，仍继续当前轨迹，不拉回入口。
+- 连续移动且跟随超过 8 s 不触发接路超时；末帧连续两拍都朝炸弹导航。
+- 同 XY、低 8 m 不能进入；低 0.7 m 的小坡差可以进入；T 和 CT 共用判定。
+- first 起点断路时显式失败；window 在长短轨迹上按比例取帧。
+- 候选重试不会重置 12 s 总预算；战斗等待不消耗预算。
+- 已惩罚边影响候选排序，而非仅影响每条路径内部搜索。
+
+阈值 1.0 m / 12 s 为本地初值，正式对局仍需用合法 training 决策日志核对坡道接入与回防耗时。
+
+本轮本地验收：`python3 -m unittest discover -s tests -q` 共 233 项，无失败、6 skipped；新增 14 项回归，覆盖上述故障及连续回调。`git diff --check` 通过。修改尚未打包上传，正式对局效果待验证。

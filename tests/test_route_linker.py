@@ -27,6 +27,137 @@ class RouteLinkerTests(unittest.TestCase):
                  static_schema_hash=MAP["geometry_hash"])
         return o
 
+    def enter_retake(self, frames=FRAMES):
+        self.player.retake_route = frames
+        self.player.retake_route_name = ROUTE_NAME
+        self.player.retake_entry_frame = 0
+        pos = list(frames[0][:3])
+        self.player.follow_retake(self.obs(pos), pos, {}, [45., 88., 15.5])
+
+    def test_following_does_not_return_to_old_entry(self):
+        self.enter_retake()
+        index = next(i for i, f in enumerate(FRAMES)
+                     if agent.distance(f[:2], FRAMES[0][:2]) > 6.5)
+        self.player.retake_cursor = index
+        pos = list(FRAMES[index][:3])
+        self.player.follow_retake(self.obs(pos, 1003), pos, {}, [45., 88., 15.5])
+        self.assertIsNone(self.player.goal)
+        self.assertGreaterEqual(self.player.retake_cursor, index)
+
+    def test_following_longer_than_link_timeout_is_allowed(self):
+        frames = tuple((float(i), 0., 0., 0., 0., 1) for i in range(200))
+        self.enter_retake(frames)
+        for step in range(1, 170):
+            pos = [1. + .5 * (step % 2), 0., 0.]
+            self.player.follow_retake(self.obs(pos, 1000 + 3 * step),
+                                      pos, {}, [199., 0., 0.])
+        self.assertFalse(self.player.retake_done)
+        self.assertIsNone(self.player.retake_link_started)
+
+    def test_bomb_handoff_never_returns_to_route_entry(self):
+        self.enter_retake()
+        self.player.retake_cursor = len(FRAMES) - 1
+        bomb = [45., 88., 15.5]
+        for tick in (1100, 1103):
+            pos = list(FRAMES[-1][:3])
+            self.player.follow_retake(self.obs(pos, tick), pos, {}, bomb)
+            self.assertEqual(self.player.goal, bomb)
+
+    def test_bomb_handoff_preserves_astar_progress(self):
+        self.enter_retake()
+        self.player.retake_cursor = len(FRAMES) - 1
+        pos = list(FRAMES[-1][:3])
+        bomb = [45., 88., 15.5]
+        self.player.follow_retake(self.obs(pos, 1100), pos, {}, bomb)
+        path = self.player.path
+        self.player.follow_retake(self.obs(pos, 1103), pos, {}, bomb)
+        self.assertIs(self.player.path, path)
+
+    def test_retake_total_timeout_falls_back_even_after_retry(self):
+        pos = [150., 100., 16.]
+        self.player.retake_route = FRAMES
+        self.player.retake_route_name = ROUTE_NAME
+        self.player.follow_retake(self.obs(pos), pos, {}, [45., 88., 15.5])
+        for tick in (1480, 1720):
+            pos[0] += .5  # prevent stationary watchdog masking the timeout
+            self.player.follow_retake(self.obs(pos, tick), pos, {}, [45., 88., 15.5])
+        self.assertTrue(self.player.retake_done)
+
+    def test_wrong_floor_is_not_entry(self):
+        pos = list(FRAMES[0][:3])
+        pos[2] -= 8.
+        self.assertIsNotNone(self.player.link_to_route(
+            self.obs(pos), pos, {}, FRAMES, entry_radius=.6))
+
+    def test_small_ramp_height_difference_is_allowed(self):
+        pos = list(FRAMES[0][:3])
+        pos[2] -= .7
+        self.assertIsNone(self.player.link_to_route(
+            self.obs(pos), pos, {}, FRAMES, entry_radius=.6))
+
+    def test_first_does_not_silently_skip_unreachable_start(self):
+        self.player.load_map({'id': 'islands', 'sites': [], 'nav': {
+            'nodes': [{'id': 'home', 'position': [0., 0., 0.]},
+                      {'id': 'island', 'position': [100., 0., 0.]}],
+            'edges': []}})
+        frames = ((100., 0., 0., 0., 0., 1), (0., 0., 0., 0., 0., 1))
+        self.assertFalse(self.player.choose_route_entry(
+            self.obs([0., 0., 0.]), [0., 0., 0.], frames, policy='first'))
+
+    def test_window_scales_with_route_length(self):
+        frames = tuple((float(i), 0., 0., 0., 0., 1) for i in range(1000))
+        pool = self.player._entry_pool([90., 0., 0.], frames, 'window',
+                                       window_fraction=.1)
+        self.assertIn(90, pool)
+        self.assertTrue(all(i < 100 for i in pool))
+
+    def test_total_link_budget_survives_candidate_retry(self):
+        pos = [150., 100., 16.]
+        o = self.obs(pos)
+        self.assertTrue(self.player.choose_route_entry(o, pos, FRAMES))
+        self.assertTrue(self.player._retry_link_entry(o, pos, FRAMES, 1480))
+        # 12 s total budget, although the second candidate has had only 4 s.
+        self.assertFalse(self.player._retry_link_entry(o, pos, FRAMES, 1720))
+
+    def test_entry_ranking_includes_learned_edge_cost(self):
+        p = self.player
+        p.load_map({'id': 'cost', 'sites': [], 'nav': {
+            'nodes': [{'id': 's', 'position': [0., 0., 0.]},
+                      {'id': 'a', 'position': [1., 0., 0.]},
+                      {'id': 'b', 'position': [0., 2., 0.]}],
+            'edges': [{'from': 's', 'to': 'a', 'kind': 'walk'},
+                      {'from': 's', 'to': 'b', 'kind': 'walk'}]}})
+        p.edge_penalty[('s', 'a')] = 10.
+        frames = ((1., 0., 0., 0., 0., 1), (0., 2., 0., 0., 0., 1))
+        ranked = p._rank_entries([0., 0., 0.], frames, [0, 1])
+        self.assertEqual(ranked[0][1], 1)
+
+    def test_attack_wrong_floor_is_not_entry(self):
+        pos = list(FRAMES[0][:3])
+        pos[2] -= 8.
+        self.player._start_attack_rejoin(self.obs(pos), pos, FRAMES,
+                                          {'name': 'floor'}, 0)
+        action = self.player.follow_attack_link(
+            self.obs(pos), pos, FRAMES, {'name': 'floor'}, {})
+        self.assertIsNotNone(action)
+        self.assertFalse(self.player.link.entered)
+
+    def test_combat_pause_does_not_spend_total_budget(self):
+        pos = [150., 100., 16.]
+        self.player.choose_route_entry(self.obs(pos), pos, FRAMES,
+                                       segment='attack')
+        self.player._pause_attack_watchdogs(2000)
+        self.assertTrue(self.player._retry_link_entry(
+            self.obs(pos, 2003), pos, FRAMES, 2003))
+
+    def test_combat_pause_preserves_precombat_entry_time(self):
+        pos = [150., 100., 16.]
+        self.player.choose_route_entry(self.obs(pos), pos, FRAMES)
+        self.assertFalse(self.player._link_timed_out(1300))
+        self.player._pause_link_watchdog(2300)
+        self.assertTrue(self.player._link_timed_out(2480))
+        self.assertEqual(self.player.link.active_ticks, 480)
+
     def test_link_to_route_uses_astar_until_entry(self):
         start = [150.0, 100.0, 16.0]
         o = self.obs(start)
